@@ -10,8 +10,8 @@ from lcblm._logging import utils_logger as logger
 
 def plot_learning_curves(  # noqa: PLR0913
     training_losses: list[float],
-    validation_losses: list[float] | None,
-    best_epoch: int | None,
+    validation_losses: list[float] | None = None,
+    best_epoch: int | None = None,
     tg_token: str | None = None,
     tg_chat_id: str | None = None,
     msg_id: int | None = None,
