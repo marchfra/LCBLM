@@ -4,8 +4,6 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-EOS_TOKEN_ID = 2
-
 
 class Sentence(NamedTuple):
     input_ids: Tensor
@@ -16,9 +14,25 @@ class Sentence(NamedTuple):
 
 
 class NextTokenDataset(Dataset[Sentence]):
-    def __init__(self, input_ids: Tensor, embeddings: Tensor) -> None:
+    def __init__(
+        self,
+        input_ids: Tensor,
+        embeddings: Tensor,
+        pad_token_id: int,
+        eos_token_id: int,
+    ) -> None:
+        if input_ids.ndim != 2:  # noqa: PLR2004
+            raise ValueError("input_ids must be a 2D tensor.")
+        if embeddings.ndim != 3:  # noqa: PLR2004
+            raise ValueError("embeddings must be a 3D tensor.")
+        if input_ids.shape != embeddings.shape[:2]:
+            raise ValueError(
+                "The first two dimensions of input_ids and embeddings must match.",
+            )
+
         self.input_ids = input_ids
-        self.attention_mask = self.input_ids.ne(EOS_TOKEN_ID).int()
+        self.eos_token_id = eos_token_id
+        self.attention_mask = self.input_ids.ne(pad_token_id).int()
         self.embeddings = embeddings
 
     def __len__(self) -> int:
@@ -54,7 +68,9 @@ class NextTokenDataset(Dataset[Sentence]):
             attention_mask = self.attention_mask[idx]
             embeddings = self.embeddings[idx]
 
-            next_token_ids = torch.cat([input_ids[1:], torch.tensor([EOS_TOKEN_ID])])
+            next_token_ids = torch.cat(
+                [input_ids[1:], torch.tensor([self.eos_token_id])],
+            )
             next_attention_mask = torch.cat([attention_mask[1:], torch.tensor([1])])
 
             return Sentence(
