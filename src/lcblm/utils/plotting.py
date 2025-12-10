@@ -10,6 +10,8 @@ def plot_learning_curves(  # noqa: PLR0913
     tg_token: str | None = None,
     tg_chat_id: str | None = None,
     msg_id: int | None = None,
+    *,
+    y_log_scale: bool = False,
 ) -> None:
     """Plot and optionally send learning curves via Telegram.
 
@@ -24,6 +26,7 @@ def plot_learning_curves(  # noqa: PLR0913
         tg_chat_id: the unique identifier for the target chat
         msg_id: the id of the Telegram message to edit. If not supplied will send a new
             message
+        y_log_scale: whether to set y-axis scale to logarithmic
 
     Raises:
         ValueError: if training_losses and validation_losses have different lengths
@@ -58,6 +61,9 @@ def plot_learning_curves(  # noqa: PLR0913
     ax.set_ylabel("Loss")
     ax.set_title("Learning Curves")
     ax.legend()
+
+    if y_log_scale:
+        ax.set_yscale("log")
 
     fig.tight_layout()
     fig.savefig("learning_curves.png", dpi=300)
