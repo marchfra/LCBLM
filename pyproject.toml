@@ -27,6 +27,7 @@ version_scheme = "pep440"
 version_provider = "uv"
 update_changelog_on_bump = true
 major_version_zero = true
+breaking_change_exclamation_in_title = true
 
 [project.scripts]
 lcblm = "lcblm:main"
