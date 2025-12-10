@@ -1,0 +1,4 @@
+# Reset legend options to default
+legend.frameon : True
+legend.fancybox : True
+legend.framealpha : 0.8

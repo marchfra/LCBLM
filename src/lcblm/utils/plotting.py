@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from trainvox import edit_telegram_media, send_telegram_photo
 
+from lcblm._logging import utils_logger as logger
+
 
 def plot_learning_curves(  # noqa: PLR0913
     training_losses: list[float],
@@ -128,17 +130,35 @@ def _best_epoch_tick(ax: Axes, best_epoch: int) -> None:
 
 
 def set_plt_style(
-    styles: list[str] | None,
+    styles: list[str] | None = None,
     style_path: str | Path | None = None,
 ) -> None:
+    """Set Matplotlib styles.
+
+    Args:
+        styles: list of styles to use. Defaults to grid, science, notebook, mylegend.
+        style_path: the path where the .mplstyle files are stored. Defaults to system
+            Matplotlib. If the style files are not found there, tries local "mplstyles"
+            directory.
+
+    """
     if styles is None:
         styles = ["grid", "science", "notebook", "mylegend"]
 
-    with contextlib.suppress(OSError):
-        plt.style.use(styles)
-        return
+    if style_path is None:
+        # Look in default style location
+        with contextlib.suppress(OSError):
+            plt.style.use(styles)
+            return
 
-    if style_path is not None:
+        # Look in local mplstyles directory
+        with contextlib.suppress(OSError):
+            plt.style.use([Path("mplstyles") / f"{style}.mplstyle" for style in styles])
+            return
+
+        logger.warning("Styles not found, using default matplotlib style.")
+        plt.style.use("default")
+    else:
         style_path = Path(style_path)
         if style_path.exists():
             try:
@@ -146,12 +166,10 @@ def set_plt_style(
                     [str(style_path / f"{style}.mplstyle") for style in styles],
                 )
             except FileNotFoundError:
-                print("Some style files not found, using default matplotlib style.")
+                logger.warning("Style files not found, using default matplotlib style.")
+                plt.style.use("default")
             else:
                 return
         else:
-            print("Styles path not found, using default matplotlib style.")
+            logger.warning("Styles path doesn't exist, using default matplotlib style.")
             plt.style.use("default")
-    else:
-        print("Styles not found, using default matplotlib style.")
-        plt.style.use("default")
