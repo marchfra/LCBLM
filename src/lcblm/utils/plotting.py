@@ -112,7 +112,7 @@ def _best_epoch_tick(ax: Axes, best_epoch: int) -> None:
     ax.set_xticklabels(minor_labels, minor=True)
 
     # Check if best epoch label conflicts with major tick labels
-    digit_width = 0.02  # rough estimate: each digit is about 2% of the x-axis range
+    digit_width = 0.03  # rough estimate: each digit is about 3% of the x-axis range
     x_range = ax.get_xlim()[1] - ax.get_xlim()[0]
     best_label_width = len(str(int(best_epoch + 1))) * digit_width * x_range
 
