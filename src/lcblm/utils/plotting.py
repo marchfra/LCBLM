@@ -3,6 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.ticker import MaxNLocator
 from trainvox import edit_telegram_media, send_telegram_photo
 
 from lcblm._logging import utils_logger as logger
@@ -66,6 +67,8 @@ def plot_learning_curves(  # noqa: PLR0913
     ax.set_ylabel("Loss")
     ax.set_title("Learning Curves")
     ax.legend()
+
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     if y_log_scale:
         ax.set_yscale("log")
