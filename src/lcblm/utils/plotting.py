@@ -1,3 +1,6 @@
+import contextlib
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from trainvox import edit_telegram_media, send_telegram_photo
@@ -122,3 +125,33 @@ def _best_epoch_tick(ax: Axes, best_epoch: int) -> None:
     # Only move label inside plot if there's a conflict
     if has_conflict:
         ax.tick_params(axis="x", which="minor", pad=-20)
+
+
+def set_plt_style(
+    styles: list[str] | None,
+    style_path: str | Path | None = None,
+) -> None:
+    if styles is None:
+        styles = ["grid", "science", "notebook", "mylegend"]
+
+    with contextlib.suppress(OSError):
+        plt.style.use(styles)
+        return
+
+    if style_path is not None:
+        style_path = Path(style_path)
+        if style_path.exists():
+            try:
+                plt.style.use(
+                    [str(style_path / f"{style}.mplstyle") for style in styles],
+                )
+            except FileNotFoundError:
+                print("Some style files not found, using default matplotlib style.")
+            else:
+                return
+        else:
+            print("Styles path not found, using default matplotlib style.")
+            plt.style.use("default")
+    else:
+        print("Styles not found, using default matplotlib style.")
+        plt.style.use("default")
