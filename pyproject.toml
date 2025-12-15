@@ -14,11 +14,14 @@ dependencies = [
     "sae-utils",
     "transformers>=4.57.3",
     "python-dotenv>=1.2.1",
+    "better-kaggle-secrets",
+    "datasets>=4.4.1",
 ]
 
 [tool.uv.sources]
 trainvox = { git = "http://github.com/marchfra/trainvox" }
 sae-utils = { git = "https://github.com/marchfra/sae-utils.git" }
+better-kaggle-secrets = { git = "https://github.com/marchfra/better-kaggle-secrets" }
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -31,6 +34,7 @@ breaking_change_exclamation_in_title = true
 
 [project.scripts]
 lcblm = "lcblm:main"
+finetuning = "lcblm.baselines.finetuning:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
