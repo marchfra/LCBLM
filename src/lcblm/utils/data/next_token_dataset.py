@@ -55,13 +55,10 @@ class NextTokenDataset(Dataset[Sentence]):
 
     @overload
     def __getitem__(self, idx: int) -> Sentence: ...
-
     @overload
     def __getitem__(self, idx: list[int]) -> list[Sentence]: ...
-
     @overload
     def __getitem__(self, idx: slice) -> list[Sentence]: ...
-
     def __getitem__(self, idx):
         if isinstance(idx, int):
             input_ids = self.input_ids[idx]
