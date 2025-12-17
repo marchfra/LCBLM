@@ -24,17 +24,15 @@ class DatasetConfig:
     """Common configuration for all datasets.
 
     Args:
-        batch_size: the batch size to use in the DataLoaders
-        max_length: the maximum length of a tokenized sequence
         tokenizer_name: the id of a HuggingFace pretrained tokenizer
+        max_length: the maximum length of a tokenized sequence
         shuffle_train: whether to shuffle the train set
         dataloader_kwargs: any additional dataloader settings
 
     """
 
-    batch_size: int
+    tokenizer_name: str
     max_length: int = 512
-    tokenizer_name: str = "mistralai/Mistral-7B-v0.1"
     shuffle_train: bool = True
     dataloader_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -166,6 +164,7 @@ class DatasetStrategy(ABC):
 
     def get_loaders(
         self,
+        batch_size: int,
     ) -> tuple[DataLoader[EncodedSentence], DataLoader[EncodedSentence]]:
         """Create train and validation dataloaders."""
         train_dataset, val_dataset = self.load_datasets()
@@ -195,9 +194,14 @@ class DatasetStrategy(ABC):
 
         train_loader = self._create_loader(
             train_dataset,
+            batch_size=batch_size,
             shuffle=self.config.shuffle_train,
         )
-        val_loader = self._create_loader(val_dataset, shuffle=False)
+        val_loader = self._create_loader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+        )
         logger.debug("Created dataloaders.")
 
         return train_loader, val_loader
@@ -224,12 +228,13 @@ class DatasetStrategy(ABC):
     def _create_loader(
         self,
         dataset: TokenizedDataset,
+        batch_size: int,
         *,
         shuffle: bool,
     ) -> DataLoader[EncodedSentence]:
         """Create a DataLoader with standard configuration."""
         kwargs = self.config.dataloader_kwargs
-        kwargs["batch_size"] = self.config.batch_size
+        kwargs["batch_size"] = batch_size
         kwargs["shuffle"] = shuffle
         return DataLoader(dataset, **kwargs)
 
