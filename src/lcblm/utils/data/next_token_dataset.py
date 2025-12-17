@@ -21,10 +21,25 @@ class NextTokenDataset(Dataset[Sentence]):
     def __init__(
         self,
         input_ids: Tensor,
+        attention_mask: Tensor,
         embeddings: Tensor,
-        pad_token_id: int,
         eos_token_id: int,
     ) -> None:
+        """Initialize the dataset with input token IDs and their LLM embeddings.
+
+        Args:
+            input_ids: A 2D tensor of token IDs with shape (num_sentences, seq_length).
+            attention_mask: A 2D tensor that is 0 where a pad token is used and 1
+                otherwise.
+            embeddings: A 3D tensor of embeddings with shape (num_sentences, seq_length,
+                embedding_dim).
+            eos_token_id: The token ID used to denote end-of-sequence.
+
+        Raises:
+            ValueError: If input_ids is not 2D, embeddings is not 3D, or their first two
+                dimensions do not match.
+
+        """
         if input_ids.ndim != 2:  # noqa: PLR2004
             msg = "input_ids must be a 2D tensor."
             raise ValueError(msg)
@@ -36,8 +51,8 @@ class NextTokenDataset(Dataset[Sentence]):
             raise ValueError(msg)
 
         self.input_ids = input_ids
+        self.attention_mask = attention_mask
         self.eos_token_id = eos_token_id
-        self.attention_mask = self.input_ids.ne(pad_token_id).int()
         self.embeddings = embeddings
 
     def __len__(self) -> int:
