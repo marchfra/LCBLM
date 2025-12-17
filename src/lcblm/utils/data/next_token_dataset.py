@@ -6,6 +6,8 @@ from torch.utils.data import Dataset
 
 
 class Sentence(NamedTuple):
+    """Representation of a sentence useful for next token prediction."""
+
     input_ids: Tensor
     attention_mask: Tensor
     embeddings: Tensor
@@ -14,6 +16,8 @@ class Sentence(NamedTuple):
 
 
 class NextTokenDataset(Dataset[Sentence]):
+    """Dataset useful for next token prediction."""
+
     def __init__(
         self,
         input_ids: Tensor,
@@ -22,13 +26,14 @@ class NextTokenDataset(Dataset[Sentence]):
         eos_token_id: int,
     ) -> None:
         if input_ids.ndim != 2:  # noqa: PLR2004
-            raise ValueError("input_ids must be a 2D tensor.")
+            msg = "input_ids must be a 2D tensor."
+            raise ValueError(msg)
         if embeddings.ndim != 3:  # noqa: PLR2004
-            raise ValueError("embeddings must be a 3D tensor.")
+            msg = "embeddings must be a 3D tensor."
+            raise ValueError(msg)
         if input_ids.shape != embeddings.shape[:2]:
-            raise ValueError(
-                "The first two dimensions of input_ids and embeddings must match.",
-            )
+            msg = "The first two dimensions of input_ids and embeddings must match."
+            raise ValueError(msg)
 
         self.input_ids = input_ids
         self.eos_token_id = eos_token_id
@@ -84,4 +89,5 @@ class NextTokenDataset(Dataset[Sentence]):
         if isinstance(idx, slice):
             return [self[i] for i in range(*idx.indices(len(self)))]
 
-        raise ValueError("Unsupported index type.")
+        msg = "Unsupported index type."
+        raise ValueError(msg)

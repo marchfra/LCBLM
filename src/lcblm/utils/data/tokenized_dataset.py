@@ -6,6 +6,7 @@ import torch
 from datasets import load_dataset
 from datasets.arrow_dataset import Dataset as HFDataset
 from datasets.formatting.formatting import LazyBatch
+from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
     AutoTokenizer,
@@ -47,17 +48,20 @@ class DatasetConfig:
             )
             # check that the model already has at least one special token defined
             if len(existing_special_tokens) == 0:
-                raise ValueError(
+                msg = (
                     "The tokenizer must have at least one special token defined to use "
-                    "for padding. Please use a different tokenizer.",
+                    "for padding. Please use a different tokenizer."
                 )
+                raise ValueError(msg)
             # assign one of the special tokens to also be the pad token
             self.tokenizer.add_special_tokens({"pad_token": existing_special_tokens[0]})
 
 
 class EncodedSentence(NamedTuple):
-    input_ids: torch.Tensor
-    attention_mask: torch.Tensor
+    """Tokenized sentence representation."""
+
+    input_ids: Tensor
+    attention_mask: Tensor
 
 
 class TokenizedDataset(Dataset[EncodedSentence]):
@@ -88,7 +92,8 @@ class TokenizedDataset(Dataset[EncodedSentence]):
 
         """
         if len(input_ids) != len(attention_mask):
-            raise ValueError("input_ids and attention_mask must have the same length")
+            msg = "input_ids and attention_mask must have the same length"
+            raise ValueError(msg)
 
         self.input_ids = torch.tensor(input_ids)
         self.attention_mask = torch.tensor(attention_mask)
@@ -141,13 +146,20 @@ class TokenizedDataset(Dataset[EncodedSentence]):
         if isinstance(idx, slice):
             return [self[i] for i in range(*idx.indices(len(self)))]
 
-        raise ValueError("Unsupported index type.")
+        msg = "Unsupported index type."
+        raise ValueError(msg)
 
 
 class DatasetStrategy(ABC):
     """Base strategy for dataset loading."""
 
     def __init__(self, config: DatasetConfig) -> None:
+        """Initialize the dataset with the provided configuration.
+
+        Args:
+            config: The configuration object containing dataset parameters.
+
+        """
         self.config = config
 
     @abstractmethod
@@ -252,6 +264,7 @@ class SST2Strategy(DatasetStrategy):
     """Strategy for SST-2 (Stanford Sentiment Treebank) dataset."""
 
     def load_datasets(self) -> tuple[HFDataset, HFDataset]:
+        """Create train and validation datasets."""
         # Load from HuggingFace
         datasets: DatasetDict = load_dataset("SetFit/sst2")  # type: ignore[reportAssignmentType]
 
@@ -262,6 +275,7 @@ class YelpPolarityStrategy(DatasetStrategy):
     """Strategy for Yelp Polarity dataset."""
 
     def load_datasets(self) -> tuple[HFDataset, HFDataset]:
+        """Create train and validation datasets."""
         datasets: DatasetDict = load_dataset("yelp_polarity")  # type: ignore[reportAssignmentType]
 
         return datasets["train"], datasets["test"]
@@ -271,6 +285,7 @@ class IMDBStrategy(DatasetStrategy):
     """Strategy for IMDB movie reviews dataset."""
 
     def load_datasets(self) -> tuple[HFDataset, HFDataset]:
+        """Create train and validation datasets."""
         datasets: DatasetDict = load_dataset("stanfordnlp/imdb")  # type: ignore[reportAssignmentType]
 
         return datasets["train"], datasets["test"]
@@ -280,6 +295,7 @@ class AGNewsStrategy(DatasetStrategy):
     """Strategy for AG News dataset (4-class news classification)."""
 
     def load_datasets(self) -> tuple[HFDataset, HFDataset]:
+        """Create train and validation datasets."""
         datasets: DatasetDict = load_dataset("ag_news")  # type: ignore[reportAssignmentType]
 
         return datasets["train"], datasets["test"]
@@ -322,10 +338,11 @@ class DatasetFactory:
     def create(cls, name: str, config: DatasetConfig) -> DatasetStrategy:
         """Create a dataset strategy by name."""
         if name not in cls._strategies:
-            raise ValueError(
+            msg = (
                 f"Unknown dataset: {name}. "
-                f"Available datasets: {cls.available_datasets()}",
+                f"Available datasets: {cls.available_datasets()}"
             )
+            raise ValueError(msg)
         return cls._strategies[name](config)
 
     @classmethod
