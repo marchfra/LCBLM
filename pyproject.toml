@@ -37,6 +37,12 @@ update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true
 
+[tool.pyright]
+exclude = [".venv"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
 [tool.jupytext.formats]
 "notebooks/" = "ipynb"
 "scripts/" = "py:percent"
