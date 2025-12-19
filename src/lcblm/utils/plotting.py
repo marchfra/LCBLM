@@ -138,10 +138,11 @@ def set_plt_style(
     """Set Matplotlib styles.
 
     Args:
-        styles: List of styles to use. Defaults to grid, science, notebook, mylegend.
-        style_path: The path where the .mplstyle files are stored. Defaults to system
-            Matplotlib. If the style files are not found there, tries local "mplstyles"
-            directory.
+        styles: List of styles to use. If None, grid, science, notebook, and mylegend
+            styles will be loaded.
+        style_path: The path where the .mplstyle files are stored. If None, tries to
+            load styles from the system Matplotlib. If the style files are not found
+            there, tries local "mplstyles" directory.
 
     """
     if styles is None:
