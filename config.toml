@@ -1,0 +1,29 @@
+backbone_llm = "mistralai/Mistral-7B-v0.1"
+dataset = "sst2"
+
+[embedding]
+batch_size = 64
+
+[baseline.finetune]
+batch_size = 32
+
+[baseline.train]
+batch_size = 32
+
+[sae.sae]
+batch_size = 32
+latent_dim_factor = 4
+
+[sae.head]
+batch_size = 32
+
+[lcblm.lcblm]
+
+[lcblm.head]
+
+[metrics.perplexity]
+llm = "Qwen/Qwen3-8B"
+
+[metrics.concept_dictionary]
+
+[metrics.intervenability]
