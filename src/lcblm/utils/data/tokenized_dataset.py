@@ -25,14 +25,15 @@ class DatasetConfig:
     """Common configuration for all datasets.
 
     Args:
-        tokenizer_name: the id of a HuggingFace pretrained tokenizer
+        model_id: The id of a HuggingFace pretrained model, used to instantiate the
+            tokenizer.
         max_length: The maximum length of a tokenized sequence.
         shuffle_train: Whether to shuffle the train set.
         dataloader_kwargs: Any additional dataloader settings.
 
     """
 
-    tokenizer_name: str
+    model_id: str
     max_length: int = 512
     shuffle_train: bool = True
     dataloader_kwargs: dict[str, Any] = field(default_factory=dict)
@@ -40,7 +41,7 @@ class DatasetConfig:
     def __post_init__(self) -> None:
         """Initialize tokenizer after config creation."""
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-            self.tokenizer_name,
+            self.model_id,
         )
         if self.tokenizer.pad_token is None:
             existing_special_tokens = list(
