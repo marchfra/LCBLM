@@ -45,7 +45,7 @@ class SAEConfig(BaseModel):
     latent_dim_factor: int = 4
 
 
-class SAEHeadConfig(BaseModel):
+class SAEClfConfig(BaseModel):
     """Configuration for a SAE + linear classifier."""
 
     sae: SAEConfig
@@ -53,7 +53,7 @@ class SAEHeadConfig(BaseModel):
 
 
 class LCBLMConfig(BaseModel):
-    pass
+    """Configuration for a Concept Embedding Model."""
 
 
 class PerplexityConfig(BaseModel):
@@ -80,7 +80,7 @@ class Config(BaseModel):
 
     embedding: EmbeddingConfig
     baseline: BaselineConfig
-    sae: SAEHeadConfig
+    sae: SAEClfConfig
     lcblm: LCBLMConfig
     metrics: MetricsConfig
     backbone_llm: str = "mistralai/Mistral-7B-v0.1"
