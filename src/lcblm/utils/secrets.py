@@ -33,6 +33,5 @@ def get_secrets(
             load_dotenv()
             return {secret: os.getenv(secret) for secret in secrets}
         case _:
-            raise ValueError(
-                f"Supported platforms are {SUPPORTED_PLATFORMS}, got {platform}",
-            )
+            msg = f"Supported platforms are {SUPPORTED_PLATFORMS}, got {platform}"
+            raise ValueError(msg)

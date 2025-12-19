@@ -39,9 +39,8 @@ def plot_learning_curves(  # noqa: PLR0913
 
     """
     if validation_losses is not None and len(training_losses) != len(validation_losses):
-        raise ValueError(
-            "training_losses and validation_losses must have the same length",
-        )
+        msg = "training_losses and validation_losses must have the same length"
+        raise ValueError(msg)
 
     # Try to infer best epoch
     if best_epoch is None and validation_losses is not None:
