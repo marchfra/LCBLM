@@ -11,14 +11,14 @@ def get_secrets(
     """Get secrets from the platform's secrets utility.
 
     Args:
-        platform: the platform this code is running on.
-        secrets: list of secrets to retrieve.
+        platform: The platform this code is running on.
+        secrets: List of secrets to retrieve.
 
     Returns:
         Dictionary mapping secret name to secret value.
 
     Raises:
-        ValueError: if unsupported platform is passed.
+        ValueError: If unsupported platform is passed.
 
     """
     match platform:

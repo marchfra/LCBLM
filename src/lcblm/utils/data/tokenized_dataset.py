@@ -26,9 +26,9 @@ class DatasetConfig:
 
     Args:
         tokenizer_name: the id of a HuggingFace pretrained tokenizer
-        max_length: the maximum length of a tokenized sequence
-        shuffle_train: whether to shuffle the train set
-        dataloader_kwargs: any additional dataloader settings
+        max_length: The maximum length of a tokenized sequence.
+        shuffle_train: Whether to shuffle the train set.
+        dataloader_kwargs: Any additional dataloader settings.
 
     """
 
@@ -74,8 +74,8 @@ class TokenizedDataset(Dataset[EncodedSentence]):
     length).
 
     Args:
-        input_ids: tokenized input IDs for each sentence
-        attention_mask: attention masks corresponding to input IDs
+        input_ids: Tokenized input IDs for each sentence.
+        attention_mask: Attention masks corresponding to input IDs.
 
     """
 
@@ -87,8 +87,8 @@ class TokenizedDataset(Dataset[EncodedSentence]):
         """Initialize the dataset with input IDs and attention masks.
 
         Args:
-            input_ids: tokenized input IDs for each sentence
-            attention_mask: attention masks corresponding to input IDs
+            input_ids: Tokenized input IDs for each sentence.
+            attention_mask: Attention masks corresponding to input IDs.
 
         """
         if len(input_ids) != len(attention_mask):

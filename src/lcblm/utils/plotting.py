@@ -22,20 +22,20 @@ def plot_learning_curves(  # noqa: PLR0913
     """Plot and optionally send learning curves via Telegram.
 
     Args:
-        training_losses: list of training losses. Every entry corresponds to one epoch
-        validation_losses: list of validation losses. Every entry corresponds to one
-            epoch
-        best_epoch: the epoch with the lowest validation loss. Can even be an epoch that
+        training_losses: List of training losses. Every entry corresponds to one epoch.
+        validation_losses: List of validation losses. Every entry corresponds to one
+            epoch.
+        best_epoch: The epoch with the lowest validation loss. Can even be an epoch that
             you want to highlight for whatever reason. If None and validation_losses is
-            provided, will automatically be calculated from validation_losses
-        tg_token: the token of the Telegram bot
-        tg_chat_id: the unique identifier for the target chat
-        msg_id: the id of the Telegram message to edit. If not supplied will send a new
-            message
-        y_log_scale: whether to set y-axis scale to logarithmic
+            provided, will automatically be calculated from validation_losses.
+        tg_token: The token of the Telegram bot.
+        tg_chat_id: The unique identifier for the target chat.
+        msg_id: The id of the Telegram message to edit. If not supplied will send a New
+            message.
+        y_log_scale: Whether to set y-axis scale to logarithmic.
 
     Raises:
-        ValueError: if training_losses and validation_losses have different lengths
+        ValueError: If training_losses and validation_losses have different lengths.
 
     """
     if validation_losses is not None and len(training_losses) != len(validation_losses):
@@ -138,8 +138,8 @@ def set_plt_style(
     """Set Matplotlib styles.
 
     Args:
-        styles: list of styles to use. Defaults to grid, science, notebook, mylegend.
-        style_path: the path where the .mplstyle files are stored. Defaults to system
+        styles: List of styles to use. Defaults to grid, science, notebook, mylegend.
+        style_path: The path where the .mplstyle files are stored. Defaults to system
             Matplotlib. If the style files are not found there, tries local "mplstyles"
             directory.
 
