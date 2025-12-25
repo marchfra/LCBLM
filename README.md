@@ -42,9 +42,10 @@
 
 1. Create `config.toml` file where the user picks a dataset, a backbone LLM and
    all other project parameters
-2. Generalize to different datasets
-3. Generalize to different backbone LLMs
-4. Use the embeddings of different layers of the backbone LLM
+2. Use retry pattern on llm concept annotations
+3. Generalize to different datasets
+4. Generalize to different backbone LLMs
+5. Use the embeddings of different layers of the backbone LLM
 
 ## Important notes
 
