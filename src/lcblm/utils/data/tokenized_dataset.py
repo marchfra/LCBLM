@@ -230,7 +230,7 @@ class DatasetStrategy(ABC):
             batched=True,
             batch_size=len(train_dataset),
         )
-        tokenized_val = train_dataset.map(
+        mapped_val = val_dataset.map(
             self.tokenize_function,
             batched=True,
             batch_size=len(val_dataset),
