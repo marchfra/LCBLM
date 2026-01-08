@@ -1,6 +1,5 @@
 import sys
 import tomllib
-from enum import Enum, auto
 from pathlib import Path
 
 from pydantic import BaseModel
