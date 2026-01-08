@@ -187,7 +187,7 @@ class DatasetStrategy(ABC):
         logger.info(
             "Loaded datasets.",
             extra={
-                "cls_name": self.__name__,
+                "cls_name": self.__class__.__name__,
                 "train_length": len(train_dataset),
                 "val_length": len(val_dataset),
             },
