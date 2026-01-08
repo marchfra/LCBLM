@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, overload
@@ -35,11 +36,13 @@ class DatasetConfig:
 
     model_id: str
     max_length: int = 512
-    shuffle_train: bool = True
+    shuffle_train: bool = False
     dataloader_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Initialize tokenizer after config creation."""
+        os.environ["TOKENIZER_PARALLELISM"] = "false"
+
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
             self.model_id,
         )
