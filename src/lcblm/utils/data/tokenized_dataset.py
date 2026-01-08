@@ -194,24 +194,15 @@ class DatasetStrategy(ABC):
             train_dataset,
             val_dataset,
         )
-        logger.debug("Tokenied datasets.")
-
-        train_dataset = TokenizedDataset(
-            train_tokenized["input_ids"],
-            train_tokenized["attention_mask"],
-        )
-        val_dataset = TokenizedDataset(
-            val_tokenized["input_ids"],
-            val_tokenized["attention_mask"],
-        )
+        logger.debug("Tokenized datasets.")
 
         train_loader = self._create_loader(
-            train_dataset,
+            train_tokenized,
             batch_size=batch_size,
             shuffle=self.config.shuffle_train,
         )
         val_loader = self._create_loader(
-            val_dataset,
+            val_tokenized,
             batch_size=batch_size,
             shuffle=False,
         )
@@ -223,9 +214,9 @@ class DatasetStrategy(ABC):
         self,
         train_dataset: HFDataset,
         val_dataset: HFDataset,
-    ) -> tuple[HFDataset, HFDataset]:
+    ) -> tuple[TokenizedDataset, TokenizedDataset]:
         """Tokenize a dataset."""
-        tokenized_train = train_dataset.map(
+        mapped_train = train_dataset.map(
             self.tokenize_function,
             batched=True,
             batch_size=len(train_dataset),
@@ -234,6 +225,15 @@ class DatasetStrategy(ABC):
             self.tokenize_function,
             batched=True,
             batch_size=len(val_dataset),
+        )
+
+        tokenized_train = TokenizedDataset(
+            mapped_train["input_ids"],
+            mapped_train["attention_mask"],
+        )
+        tokenized_val = TokenizedDataset(
+            mapped_val["input_ids"],
+            mapped_val["attention_mask"],
         )
 
         return tokenized_train, tokenized_val
