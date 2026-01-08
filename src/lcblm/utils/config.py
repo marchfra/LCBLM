@@ -68,13 +68,6 @@ class MetricsConfig(BaseModel):
     perplexity: PerplexityConfig
 
 
-class Device(str, Enum):
-    """Available devices."""
-
-    cpu = auto()
-    cuda = auto()
-
-
 class Config(BaseModel):
     """Configuration for the whole project."""
 
