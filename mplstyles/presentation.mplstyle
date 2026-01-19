@@ -1,0 +1,64 @@
+# Color palette:
+# #1a5e8f
+# #ffffff
+# #002845
+# #ffd6e1
+# #e898ac
+# #00cfcc
+# #ff9973
+# #f64975
+# #5efffd
+# #fc723f
+
+# Foreground color
+axes.edgecolor: "#ffffff"
+axes.labelcolor: "#ffffff"
+axes.titlecolor: "#ffffff"
+figure.edgecolor: "#ffffff"
+grid.color: "#ffffff"
+legend.edgecolor: "#ffffff"
+legend.labelcolor: "#ffffff"
+lines.color: "#ffffff"
+lines.markeredgecolor: "#ffffff"
+patch.edgecolor: "#ffffff"
+text.color: "#ffffff"
+xtick.color: "#ffffff"
+xtick.labelcolor: "#ffffff"
+ytick.color: "#ffffff"
+ytick.labelcolor: "#ffffff"
+
+# Background color
+axes.facecolor: "#002845"
+figure.facecolor: "#002845"
+legend.facecolor: "#002845"
+lines.markerfacecolor: "#002845"
+patch.facecolor: "#002845"
+
+# Set color cycle with colors from the palette
+axes.prop_cycle: cycler("color", ["00cfcc", "fc723f", "ffd6e1", "5efffd", "e898ac", "f64975", "ff9973"])
+
+# Fonts
+font.family: Maven Pro
+mathtext.fontset: dejavuserif
+xtick.labelsize: 18
+ytick.labelsize: 18
+legend.fontsize: 18
+legend.title_fontsize: 18
+axes.titlesize: 20
+axes.labelsize: 18
+
+# Set thicker lines
+axes.linewidth: 1.5
+lines.linewidth: 3
+lines.markersize: 8
+grid.linewidth: 1
+xtick.major.size: 7
+xtick.major.width: 1.5
+xtick.minor.size: 4
+xtick.minor.width: 1.5
+ytick.major.size: 7
+ytick.major.width: 1.5
+ytick.minor.size: 4
+ytick.minor.width: 1.5
+
+
