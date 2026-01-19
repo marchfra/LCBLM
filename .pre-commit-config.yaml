@@ -1,22 +1,22 @@
 repos:
-- hooks:
-  - id: commitizen
-  - id: commitizen-branch
-    stages:
-    - pre-push
-  repo: https://github.com/commitizen-tools/commitizen
-  rev: v4.10.0
-- repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.9.18
-  hooks:
-    - id: uv-lock
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.14.10
-  hooks:
-    - id: ruff-check
-      args: [ --fix, --ignore=FIX002]
-    - id: ruff-format
-- repo: https://github.com/RobertCraigie/pyright-python
-  rev: v1.1.407
-  hooks:
-  - id: pyright
+  - hooks:
+      - id: commitizen
+      - id: commitizen-branch
+        stages:
+          - pre-push
+    repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.10.0
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.18
+    hooks:
+      - id: uv-lock
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.10
+    hooks:
+      - id: ruff-check
+        args: [--fix, --ignore=FIX002, --extend-exclude="**/scripts/*.py"]
+      - id: ruff-format
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.407
+    hooks:
+      - id: pyright
