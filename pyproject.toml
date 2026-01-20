@@ -37,9 +37,15 @@ update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true
 
+[tool.ruff]
+extend = "~/.config/ruff/ruff.toml"
+
+[tool.ruff.lint.per-file-ignores]
+"src/lcblm/scripts/*.py" = ["E402", "E501", "N999"]
+
 [tool.pyright]
 exclude = [".venv"]
-pythonVersion = "3.12"
+pythonVersion = "3.11.13"
 venvPath = "."
 venv = ".venv"
 
