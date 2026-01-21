@@ -13,21 +13,11 @@
 # ---
 
 # %% [markdown]
-# # LLM head finetuning for next-token prediction
+# # Finetune Mistral classifier head on SST2 embeddings
 #
-# Try using a different model to compute perplexity, possibly a larger one.
+# This notebook finetunes the pretrained Mistral classifier head with precomputed Mistral embeddings for the SST2 dataset.
 #
-# <!-- Starting from sst2 I need to:
-# 1. tokenize the sentences with Mistral's tokenizer
-# 2. pass the tokenized sentences through Mistral to get the embeddings at the last layer
-#     - in the future, get the embeddings from various layers
-#     - train a classifier to predict the token ids from the embeddings as a sanity check
-# 3. train a SAE to map from the embedding of the last layer to concept space
-#     - in the future, train a SAE to map from various layers to concept space
-# 4. extract the concept representations for each token in the sentence
-# 5. train a linear classifier to predict the *next* token id from the concept representation of the *current* token
-#
-# The focus of this notebook is step 2.2. -->
+# The output of this notebook is the state dict of the finetuned classifier head with the lowest validation loss, saved as `finetuned_classifier_head/best_classifier_state.pt`, along with the training and validation losses saved as `finetuned_classifier_head/losses.json` and the learning curves plot `finetuned_classifier_head/losses.png`.
 
 # %% [markdown]
 # ## 0 - Environment setup
@@ -72,6 +62,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenize
 from lcblm.utils.data.next_token_dataset import NextTokenDataset, Sentence
 from lcblm.utils.plotting import plot_learning_curves, set_plt_style
 from lcblm.utils.seed import set_seeds
+
+# %% [markdown]
+# #### Set seed for reproducibility
 
 # %%
 SEED = 3742
@@ -127,7 +120,9 @@ data = {
 # #### 1.1 - Load tokenizer
 
 # %%
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
+tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+    "mistralai/Mistral-7B-v0.1",
+)
 
 VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType] # Mistral's vocabulary size
 EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType] # End-of-sequence token ID for Mistral
