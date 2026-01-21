@@ -99,6 +99,7 @@ login(token=hf_token)
 
 # %%
 OUTPUT_PATH = Path("finetuned_classifier_head")
+OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
 # ## 1 - Load data

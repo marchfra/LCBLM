@@ -91,6 +91,7 @@ TG_CHAT_ID = user_secrets.get_secret("TELEGRAM_CHAT_ID")
 
 # %%
 OUTPUT_PATH = Path("retrained_classifier_head")
+OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
 # ## 1 - Load data
