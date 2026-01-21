@@ -157,7 +157,11 @@ print(f"Using device: {device.type}")
 
 classifier = AutoModelForCausalLM.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
-).lm_head.to(device)
+    dtype=torch.float16,
+    device_map="auto",
+).lm_head
+classifier.to(torch.float32)
+classifier = classifier.to(device)
 print(classifier)
 
 criterion = nn.CrossEntropyLoss()
@@ -270,7 +274,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
 
     scheduler.step()
     if epoch % 10 == 0 and epoch != 0:
-        plot_learning_curves(
+        msg_id = plot_learning_curves(
             training_losses,
             validation_losses,
             best_epoch,
