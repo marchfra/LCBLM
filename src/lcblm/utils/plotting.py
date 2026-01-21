@@ -92,12 +92,12 @@ def plot_learning_curves(  # noqa: PLR0913
                 msg_id = send_telegram_photo(
                     token=tg_token,
                     chat_id=tg_chat_id,
-                    photo_path="learning_curves.png",
+                    photo_path=output_path / "learning_curves.png",
                     caption=caption,
                 )
             else:
                 msg_id = edit_telegram_media(
-                    photo_path="learning_curves.png",
+                    photo_path=output_path / "learning_curves.png",
                     message_id=msg_id,
                     token=tg_token,
                     chat_id=tg_chat_id,
