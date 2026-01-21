@@ -65,6 +65,9 @@ def plot_learning_curves(  # noqa: PLR0913
             validation_losses,
             label="Validation",
         )
+    ax.xaxis.set_major_locator(MaxNLocator("auto", integer=True))
+    ax.xaxis.set_minor_locator(MaxNLocator(len(training_losses) + 1, integer=True))
+
     if best_epoch is not None:
         ax.scatter(best_epoch + 1, training_losses[best_epoch])
         if validation_losses is not None:
@@ -76,8 +79,6 @@ def plot_learning_curves(  # noqa: PLR0913
     ax.set_ylabel("Loss")
     ax.set_title("Learning Curves")
     ax.legend()
-
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     if y_log_scale:
         ax.set_yscale("log")
