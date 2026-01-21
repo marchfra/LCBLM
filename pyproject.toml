@@ -45,7 +45,6 @@ extend = "~/.config/ruff/ruff.toml"
 
 [tool.pyright]
 exclude = [".venv"]
-pythonVersion = "3.11.13"
 venvPath = "."
 venv = ".venv"
 
