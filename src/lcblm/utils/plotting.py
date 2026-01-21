@@ -19,7 +19,7 @@ def plot_learning_curves(  # noqa: PLR0913
     msg_id: int | None = None,
     *,
     y_log_scale: bool = False,
-) -> None:
+) -> int | None:
     """Plot and optionally send learning curves via Telegram.
 
     Args:
@@ -35,6 +35,9 @@ def plot_learning_curves(  # noqa: PLR0913
         msg_id: The id of the Telegram message to edit. If not supplied will send a New
             message.
         y_log_scale: Whether to set y-axis scale to logarithmic.
+
+    Returns:
+        The Telegram message ID.
 
     Raises:
         ValueError: If training_losses and validation_losses have different lengths.
@@ -81,23 +84,26 @@ def plot_learning_curves(  # noqa: PLR0913
     if tg_token and tg_chat_id:
         try:
             if msg_id is None:
-                send_telegram_photo(
+                msg_id = send_telegram_photo(
                     token=tg_token,
                     chat_id=tg_chat_id,
                     photo_path="learning_curves.png",
                     caption=caption,
                 )
             else:
-                edit_telegram_media(
-                    token=tg_token,
-                    chat_id=tg_chat_id,
+                msg_id = edit_telegram_media(
                     photo_path="learning_curves.png",
                     message_id=msg_id,
+                    token=tg_token,
+                    chat_id=tg_chat_id,
+                    caption=caption,
                 )
         except (FileNotFoundError, RuntimeError) as e:
             print(f"Failed to send Telegram photo: {e}")
 
     plt.show()
+
+    return msg_id
 
 
 def _best_epoch_tick(ax: Axes, best_epoch: int) -> None:
