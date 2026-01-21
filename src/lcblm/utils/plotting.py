@@ -15,6 +15,7 @@ def plot_learning_curves(  # noqa: PLR0913
     best_epoch: int | None = None,
     tg_token: str | None = None,
     tg_chat_id: str | None = None,
+    caption: str | None = None,
     msg_id: int | None = None,
     *,
     y_log_scale: bool = False,
@@ -30,6 +31,7 @@ def plot_learning_curves(  # noqa: PLR0913
             provided, will automatically be calculated from validation_losses.
         tg_token: The token of the Telegram bot.
         tg_chat_id: The unique identifier for the target chat.
+        caption: The caption of the plot on Telegram.
         msg_id: The id of the Telegram message to edit. If not supplied will send a New
             message.
         y_log_scale: Whether to set y-axis scale to logarithmic.
@@ -83,7 +85,7 @@ def plot_learning_curves(  # noqa: PLR0913
                     token=tg_token,
                     chat_id=tg_chat_id,
                     photo_path="learning_curves.png",
-                    caption=r"Next\-token classifier learning curves",
+                    caption=caption,
                 )
             else:
                 edit_telegram_media(
