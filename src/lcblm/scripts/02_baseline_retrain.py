@@ -56,7 +56,7 @@ from trainvox import (
     TelegramTqdmStrategy,
     TqdmStrategy,
 )
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from lcblm.utils.data.next_token_dataset import NextTokenDataset, Sentence
 from lcblm.utils.plotting import plot_learning_curves, set_plt_style
@@ -112,10 +112,12 @@ data = {
 # #### 1.1 - Load tokenizer
 
 # %%
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
+tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+    "mistralai/Mistral-7B-v0.1",
+)
 
-VOCAB_SIZE: int = tokenizer.vocab_size  # Mistral's vocabulary size
-EOS_TOKEN_ID: int = tokenizer.eos_token_id  # End-of-sequence token ID for Mistral
+VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType] # Mistral's vocabulary size
+EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType] # End-of-sequence token ID for Mistral
 
 # %% [markdown]
 # #### 1.2 - Create dataset
