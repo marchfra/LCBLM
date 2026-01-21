@@ -28,12 +28,15 @@
       - [x] Backbone LLM + new head
       - [x] Backbone LLM + SAE latents + new head
       - [x] Backbone LLM + SAE recon + original head
+      - [ ] Random text
       - [ ] (optional) Backbone LLM + SAE recon + new head
       - [ ] Backbone LLM + LCBLM latents + new head
       - [ ] Backbone LLM + LCBLM recon + original head
       - [ ] (optional) Backbone LLM + LCBLM recon + new head
    2. [ ] Concept labelling: do SAE and LCBLM latents correspond to
           human-understandable concepts?
+      - [x] SAE
+      - [ ] LCBLM
    3. [ ] Intervenability: does turning off or amplifying certain latents affect
           the generated sentences in the expected way?
    - [ ] Train all models on at least 3 different seeds
