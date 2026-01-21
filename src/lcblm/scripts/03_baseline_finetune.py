@@ -13,11 +13,21 @@
 # ---
 
 # %% [markdown]
-# # Retrain Mistral classifier head on SST2 embeddings
+# # LLM head finetuning for next-token prediction
 #
-# This notebook trains a linear classifier head from scratch on top of precomputed Mistral embeddings for the SST2 dataset.
+# Try using a different model to compute perplexity, possibly a larger one.
 #
-# The output of this notebook is the state dict of the trained classifier head with the lowest validation loss, saved as `retrained_classifier_head/best_classifier_state.pt`, along with the training and validation losses saved as `retrained_classifier_head/losses.json` and the learning curves plot `retrained_classifier_head/losses.png`.
+# <!-- Starting from sst2 I need to:
+# 1. tokenize the sentences with Mistral's tokenizer
+# 2. pass the tokenized sentences through Mistral to get the embeddings at the last layer
+#     - in the future, get the embeddings from various layers
+#     - train a classifier to predict the token ids from the embeddings as a sanity check
+# 3. train a SAE to map from the embedding of the last layer to concept space
+#     - in the future, train a SAE to map from various layers to concept space
+# 4. extract the concept representations for each token in the sentence
+# 5. train a linear classifier to predict the *next* token id from the concept representation of the *current* token
+#
+# The focus of this notebook is step 2.2. -->
 
 # %% [markdown]
 # ## 0 - Environment setup
@@ -46,6 +56,7 @@ from pathlib import Path
 
 import torch
 from better_kaggle_secrets import UserSecretsClient
+from huggingface_hub import login
 from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -56,14 +67,11 @@ from trainvox import (
     TelegramTqdmStrategy,
     TqdmStrategy,
 )
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from lcblm.utils.data.next_token_dataset import NextTokenDataset, Sentence
 from lcblm.utils.plotting import plot_learning_curves, set_plt_style
 from lcblm.utils.seed import set_seeds
-
-# %% [markdown]
-# #### Set seed for reproducibility
 
 # %%
 SEED = 3742
@@ -87,10 +95,17 @@ TG_TOKEN = user_secrets.get_secret("TELEGRAM_TOKEN")
 TG_CHAT_ID = user_secrets.get_secret("TELEGRAM_CHAT_ID")
 
 # %% [markdown]
+# #### Login to Hugging Face
+
+# %%
+hf_token = user_secrets.get_secret("HF_TOKEN")
+login(token=hf_token)
+
+# %% [markdown]
 # #### Define output path
 
 # %%
-OUTPUT_PATH = Path("retrained_classifier_head")
+OUTPUT_PATH = Path("finetuned_classifier_head")
 
 # %% [markdown]
 # ## 1 - Load data
@@ -132,7 +147,7 @@ datasets = {
 }
 
 # %% [markdown]
-# ## 2 - Define classifier and training parameters
+# ## 3 - Load classifier and define training parameters
 
 # %%
 LEARNING_RATE = 5e-4
@@ -144,10 +159,10 @@ BATCH_SIZE = 256
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device.type}")
 
-classifier = nn.Sequential(
-    nn.Dropout(p=0.2),
-    nn.Linear(datasets[SPLITS[0]].embedding_dimension, VOCAB_SIZE, bias=False),
-).to(device)
+classifier = AutoModelForCausalLM.from_pretrained(
+    "mistralai/Mistral-7B-v0.1",
+).lm_head.to(device)
+print(classifier)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = AdamW(classifier.parameters(), lr=LEARNING_RATE)
@@ -180,7 +195,7 @@ dataloaders = {
 }
 
 # %% [markdown]
-# ## 3 - Train classifier
+# ## 4 - Train classifier
 
 # %%
 if TG_TOKEN and TG_CHAT_ID:
@@ -196,7 +211,7 @@ else:
 
 v.on_train_begin(
     NUM_EPOCHS,
-    msg="Starting training of *classifier head from scratch*",
+    msg="Starting *finetuning* of Mistral's classifier head",
 )
 training_losses: list[float] = []
 validation_losses: list[float] = []
@@ -211,7 +226,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
     for batch in dataloaders["train"]:
         embeddings_batch = batch.embeddings.to(device)
         next_token_ids_batch = batch.next_token_ids.to(device)
-        next_attention_mask_batch = batch.attention_mask.to(device)
+        next_attention_mask_batch = batch.next_attention_mask.to(device)
 
         logits = classifier(embeddings_batch)
         loss = criterion(
@@ -235,7 +250,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         for batch in dataloaders["validation"]:
             embeddings_batch = batch.embeddings.to(device)
             next_token_ids_batch = batch.next_token_ids.to(device)
-            next_attention_mask_batch = batch.attention_mask.to(device)
+            next_attention_mask_batch = batch.next_attention_mask.to(device)
 
             logits = classifier(embeddings_batch)
             loss = criterion(
@@ -259,14 +274,14 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
 
     scheduler.step()
     if epoch % 10 == 0 and epoch != 0:
-        msg_id = plot_learning_curves(
+        plot_learning_curves(
             training_losses,
             validation_losses,
             best_epoch,
             output_path=OUTPUT_PATH,
             tg_token=TG_TOKEN,
             tg_chat_id=TG_CHAT_ID,
-            caption="Retrained head intermediate curves",
+            caption="Finetuned head intermediate curves",
             msg_id=msg_id,
         )
     v.on_epoch_end(epoch, train_loss=epoch_loss, val_loss=val_loss)
@@ -287,6 +302,6 @@ plot_learning_curves(
     output_path=OUTPUT_PATH,
     tg_token=TG_TOKEN,
     tg_chat_id=TG_CHAT_ID,
-    caption="Retrained head final curves",
+    caption="Finetuned head final curves",
     msg_id=msg_id,
 )
