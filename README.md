@@ -49,6 +49,7 @@
 3. Generalize to different datasets
 4. Generalize to different backbone LLMs
 5. Use the embeddings of different layers of the backbone LLM
+6. Perform random search for hyperparameter tuning (see ML07 page 60)
 
 ## Important notes
 
