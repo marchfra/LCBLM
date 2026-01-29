@@ -15,6 +15,8 @@
 # %% [markdown]
 # # Extracting sst2 embeddings from Mistral model
 #
+# Before running this notebook, change the GPU type on Kaggle from GPU P100 to GPU T4 x2. This type of GPU is better suited for inference tasks, and greatly speeds up the embedding extraction process.
+#
 # This notebook extracts embeddings from the Mistral model for the SST-2 dataset. The embeddings are obtained from the
 # last layer of the LLM after tokenizing the sentences using Mistral's tokenizer.
 #
@@ -41,7 +43,7 @@ else:
     raise SystemExit(msg)
 
 # %% [markdown]
-# ### 0.1 - Import libraries
+# #### Import libraries
 
 # %% _cell_guid="b1076dfc-b9ad-4769-8c92-a6c4dae69d19" _uuid="8f2839f25d086af736a60e9eeb907d3b93b6e0e5"
 import os
@@ -56,15 +58,30 @@ from tqdm.auto import tqdm
 from trainvox import send_telegram_message
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerBase
 
+from lcblm.utils.seed import set_seeds
 
 # %% [markdown]
-# ### 0.2 - Setup Telegram
+# #### Set seed for reproducibility
+
+# %%
+SEED = 3742
+set_seeds(SEED)
+
+# %% [markdown]
+# #### Setup Telegram
 
 # %%
 user_secrets = UserSecretsClient()
 TG_TOKEN = user_secrets.get_secret("TELEGRAM_TOKEN")
 TG_CHAT_ID = user_secrets.get_secret("TELEGRAM_CHAT_ID")
 
+
+# %% [markdown]
+# #### Define output path
+
+# %%
+OUTPUT_PATH = Path("sst2_mistral_embeddings")
+OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
 # ## 1 - Create dataset
@@ -154,7 +171,7 @@ class ExtractionDataset(Dataset[dict[str, torch.Tensor]]):
 
 
 # %% [markdown]
-# #### Extract data
+# ## 2 - Extract embeddings
 
 # %%
 if TG_TOKEN is not None and TG_CHAT_ID is not None:
@@ -218,7 +235,7 @@ for split, dataset in datasets.items():
             "attention_masks": all_attention_masks_tensor,
             "embeddings": all_embeddings_tensor,
         },
-        f"extracted_features_{split}.pt",
+        OUTPUT_PATH / f"extracted_features_{split}.pt",
     )
 
 if TG_TOKEN is not None and TG_CHAT_ID is not None:
