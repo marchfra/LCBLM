@@ -97,15 +97,15 @@ OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 # ## 1 - Load data
 
 # %%
-LATENTS_PATH = Path("/kaggle/input/sst2-mistral-embeddings")
+EMBEDDINGS_PATH = Path("/kaggle/input/sst2-mistral-embeddings")
 SPLITS = ["train", "validation"]
 
-if not LATENTS_PATH.exists():
-    msg = f"Data path {LATENTS_PATH} does not exist."
+if not EMBEDDINGS_PATH.exists():
+    msg = f"Data path {EMBEDDINGS_PATH} does not exist."
     raise FileNotFoundError(msg)
 
 data = {
-    split: torch.load(LATENTS_PATH / f"extracted_features_{split}.pt")
+    split: torch.load(EMBEDDINGS_PATH / f"extracted_features_{split}.pt")
     for split in SPLITS
 }
 
