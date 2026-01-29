@@ -48,13 +48,14 @@ import os
 from dataclasses import dataclass, field
 
 import torch
+from better_kaggle_secrets import UserSecretsClient
 from datasets import load_dataset
 from datasets.dataset_dict import DatasetDict
-from kaggle_secrets import UserSecretsClient  # type: ignore[running-on-kaggle]
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from trainvox import send_telegram_message
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerBase
+
 
 # %% [markdown]
 # ### 0.2 - Setup Telegram
@@ -108,7 +109,7 @@ tokenizer.pad_token = tokenizer.eos_token
 # %%
 llm = AutoModel.from_pretrained(
     config.model_name,
-    torch_dtype=torch.float16,  # With float32 goes out of memory
+    dtype=torch.float16,  # With float32 goes out of memory
     device_map="auto",  # Automatically splits model across GPUs
 )
 
@@ -156,11 +157,12 @@ class ExtractionDataset(Dataset[dict[str, torch.Tensor]]):
 # #### Extract data
 
 # %%
-send_telegram_message(
-    "🚀 Starting embedding extraction process.",
-    token=TG_TOKEN,
-    chat_id=TG_CHAT_ID,
-)
+if TG_TOKEN is not None and TG_CHAT_ID is not None:
+    send_telegram_message(
+        "🚀 Starting embedding extraction process.",
+        token=TG_TOKEN,
+        chat_id=TG_CHAT_ID,
+    )
 
 for split, dataset in datasets.items():
     print(f"\n--- Processing split: {split} ---")
@@ -219,8 +221,9 @@ for split, dataset in datasets.items():
         f"extracted_features_{split}.pt",
     )
 
-send_telegram_message(
-    "✅ Embedding extraction completed successfully.",
-    token=TG_TOKEN,
-    chat_id=TG_CHAT_ID,
-)
+if TG_TOKEN is not None and TG_CHAT_ID is not None:
+    send_telegram_message(
+        "✅ Embedding extraction completed successfully.",
+        token=TG_TOKEN,
+        chat_id=TG_CHAT_ID,
+    )
