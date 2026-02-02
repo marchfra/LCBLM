@@ -88,7 +88,12 @@ class NextTokenDataset(Dataset[Sentence]):
             next_token_ids = torch.cat(
                 [input_ids[1:], torch.tensor([self.eos_token_id])],
             )
-            next_attention_mask = torch.cat([attention_mask[1:], torch.tensor([1])])
+            # With transformers==5.0.0 the tokenizer pads on the right. This means that,
+            # if I use the EOS_TOKEN as padding (which I do), there's no need to shift
+            # the attention mask by one
+            # If using transformers<5, change the next line to
+            # `next_attention_mask = torch.cat([attention_mask[1:], torch.tensor([1])])`
+            next_attention_mask = attention_mask
 
             return Sentence(
                 input_ids=input_ids,
