@@ -227,7 +227,10 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
     for batch in dataloaders["train"]:
         embeddings_batch = batch.embeddings.to(device)
         next_token_ids_batch = batch.next_token_ids.to(device)
-        next_attention_mask_batch = batch.next_attention_mask.to(device)
+        next_attention_mask_batch = batch.next_attention_mask.to(
+            device,
+            dtype=torch.bool,
+        )
 
         logits = classifier(embeddings_batch)
         loss = criterion(
@@ -251,7 +254,10 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         for batch in dataloaders["validation"]:
             embeddings_batch = batch.embeddings.to(device)
             next_token_ids_batch = batch.next_token_ids.to(device)
-            next_attention_mask_batch = batch.next_attention_mask.to(device)
+            next_attention_mask_batch = batch.next_attention_mask.to(
+                device,
+                dtype=torch.bool,
+            )
 
             logits = classifier(embeddings_batch)
             loss = criterion(
