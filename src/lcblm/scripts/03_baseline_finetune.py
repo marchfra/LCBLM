@@ -46,7 +46,7 @@ from pathlib import Path
 
 import torch
 from better_kaggle_secrets import UserSecretsClient
-from huggingface_hub import login
+from huggingface_hub import login as hf_login
 from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -88,11 +88,12 @@ TG_TOKEN = user_secrets.get_secret("TELEGRAM_TOKEN")
 TG_CHAT_ID = user_secrets.get_secret("TELEGRAM_CHAT_ID")
 
 # %% [markdown]
-# #### Login to Hugging Face
+# #### Setup Hugging Face link
 
 # %%
-hf_token = user_secrets.get_secret("HF_TOKEN")
-login(token=hf_token)
+HF_TOKEN = user_secrets.get_secret("HF_TOKEN")
+if HF_TOKEN is not None:
+    hf_login(token=HF_TOKEN)
 
 # %% [markdown]
 # #### Define output path

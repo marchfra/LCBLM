@@ -53,6 +53,7 @@ import torch
 from better_kaggle_secrets import UserSecretsClient
 from datasets import load_dataset
 from datasets.dataset_dict import DatasetDict
+from huggingface_hub import login as hf_login
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from trainvox import send_telegram_message
@@ -68,13 +69,21 @@ SEED = 3742
 set_seeds(SEED)
 
 # %% [markdown]
-# #### Setup Telegram
+# #### Setup Telegram link
 
 # %%
 user_secrets = UserSecretsClient()
 TG_TOKEN = user_secrets.get_secret("TELEGRAM_TOKEN")
 TG_CHAT_ID = user_secrets.get_secret("TELEGRAM_CHAT_ID")
 
+
+# %% [markdown]
+# #### Setup Hugging Face link
+
+# %%
+HF_TOKEN = user_secrets.get_secret("HF_TOKEN")
+if HF_TOKEN is not None:
+    hf_login(token=HF_TOKEN)
 
 # %% [markdown]
 # #### Define output path

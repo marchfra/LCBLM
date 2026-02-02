@@ -44,6 +44,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 from better_kaggle_secrets import UserSecretsClient
+from huggingface_hub import login as hf_login
 from sae_utils import Config, SAEDataset, train_sae
 from torch.nn import functional as F  # noqa: N812
 from torch.utils.data import DataLoader
@@ -76,6 +77,14 @@ set_plt_style(styles=STYLES, style_path=STYLE_PATH)
 user_secrets = UserSecretsClient()
 TG_TOKEN = user_secrets.get_secret("TELEGRAM_TOKEN")
 TG_CHAT_ID = user_secrets.get_secret("TELEGRAM_CHAT_ID")
+
+# %% [markdown]
+# #### Setup Hugging Face link
+
+# %%
+HF_TOKEN = user_secrets.get_secret("HF_TOKEN")
+if HF_TOKEN is not None:
+    hf_login(token=HF_TOKEN)
 
 # %% [markdown]
 # #### Define output path
