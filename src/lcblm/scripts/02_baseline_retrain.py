@@ -106,7 +106,7 @@ OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 # ## 1 - Load data
 
 # %%
-EMBEDDINGS_PATH = Path("/kaggle/input/sst2-mistral-embeddings")
+EMBEDDINGS_PATH = Path("/kaggle/working/sst2_mistral_embeddings")
 SPLITS = ["train", "validation"]
 
 if not EMBEDDINGS_PATH.exists():
