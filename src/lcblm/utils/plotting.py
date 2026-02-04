@@ -9,7 +9,7 @@ from trainvox import edit_telegram_media, send_telegram_photo
 from lcblm._logging import utils_logger as logger
 
 
-def plot_learning_curves(  # noqa: PLR0913
+def plot_learning_curves(  # noqa: C901, PLR0913
     training_losses: list[float],
     validation_losses: list[float] | None = None,
     best_epoch: int | None = None,
@@ -20,6 +20,7 @@ def plot_learning_curves(  # noqa: PLR0913
     msg_id: int | None = None,
     *,
     y_log_scale: bool = False,
+    show_plot: bool = True,
 ) -> int | None:
     """Plot and optionally send learning curves via Telegram.
 
@@ -38,6 +39,7 @@ def plot_learning_curves(  # noqa: PLR0913
         msg_id: The id of the Telegram message to edit. If not supplied will send a New
             message.
         y_log_scale: Whether to set y-axis scale to logarithmic.
+        show_plot: Whether to call `plt.show()`.
 
     Returns:
         The Telegram message ID.
@@ -85,9 +87,15 @@ def plot_learning_curves(  # noqa: PLR0913
         ax.xaxis.set_minor_locator(AutoMinorLocator(n_minor))
 
     if best_epoch is not None:
-        ax.scatter(best_epoch + 1, training_losses[best_epoch])
+        ax.scatter(
+            best_epoch + 1,
+            training_losses[best_epoch],
+        )  # plotting uses 1-indexed epochs
         if validation_losses is not None:
-            ax.scatter(best_epoch + 1, validation_losses[best_epoch])
+            ax.scatter(
+                best_epoch + 1,
+                validation_losses[best_epoch],
+            )  # plotting uses 1-indexed epochs
 
         _best_epoch_tick(ax, best_epoch)
 
@@ -123,7 +131,9 @@ def plot_learning_curves(  # noqa: PLR0913
         except (FileNotFoundError, RuntimeError) as e:
             print(f"Failed to send Telegram photo: {e}")
 
-    plt.show()
+    if show_plot:
+        plt.show()
+    plt.close(fig)
 
     return msg_id
 
