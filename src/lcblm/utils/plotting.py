@@ -13,7 +13,7 @@ def plot_learning_curves(  # noqa: PLR0913
     training_losses: list[float],
     validation_losses: list[float] | None = None,
     best_epoch: int | None = None,
-    output_path: str | Path | None = None,
+    output_file: str | Path | None = None,
     tg_token: str | None = None,
     tg_chat_id: str | None = None,
     caption: str | None = None,
@@ -30,8 +30,8 @@ def plot_learning_curves(  # noqa: PLR0913
         best_epoch: The epoch with the lowest validation loss. Can even be an epoch that
             you want to highlight for whatever reason. If None and validation_losses is
             provided, will automatically be calculated from validation_losses.
-        output_path: The path where to save the plot. If None, saves to current working
-            directory.
+        output_file: The path of the saved plot. If None, saves to
+            $(cwd)/learning_curves.png
         tg_token: The token of the Telegram bot.
         tg_chat_id: The unique identifier for the target chat.
         caption: The caption of the plot on Telegram.
@@ -54,7 +54,11 @@ def plot_learning_curves(  # noqa: PLR0913
     if best_epoch is None and validation_losses is not None:
         best_epoch = validation_losses.index(min(validation_losses))
 
-    output_path = Path(output_path) if output_path is not None else Path.cwd()
+    output_file = (
+        Path(output_file)
+        if output_file is not None
+        else Path.cwd() / "learning_curves.png"
+    )
 
     fig, ax = plt.subplots()
 
@@ -84,7 +88,7 @@ def plot_learning_curves(  # noqa: PLR0913
         ax.set_yscale("log")
 
     fig.tight_layout()
-    fig.savefig(output_path / "learning_curves.png", dpi=300)
+    fig.savefig(output_file, dpi=300)
 
     # Send plot on Telegram
     if tg_token and tg_chat_id:
@@ -93,12 +97,12 @@ def plot_learning_curves(  # noqa: PLR0913
                 msg_id = send_telegram_photo(
                     token=tg_token,
                     chat_id=tg_chat_id,
-                    photo_path=output_path / "learning_curves.png",
+                    photo_path=output_file,
                     caption=caption,
                 )
             else:
                 msg_id = edit_telegram_media(
-                    photo_path=output_path / "learning_curves.png",
+                    photo_path=output_file,
                     message_id=msg_id,
                     token=tg_token,
                     chat_id=tg_chat_id,
