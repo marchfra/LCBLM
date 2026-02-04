@@ -1,48 +1,38 @@
-import contextlib
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 from trainvox import edit_telegram_media, send_telegram_photo
 
 from lcblm._logging import utils_logger as logger
 
 
-def plot_learning_curves(  # noqa: C901, PLR0913
+def plot_learning_curves(
     training_losses: list[float],
     validation_losses: list[float] | None = None,
+    title: str = "Learning Curves",
     best_epoch: int | None = None,
-    output_file: str | Path | None = None,
-    tg_token: str | None = None,
-    tg_chat_id: str | None = None,
-    caption: str | None = None,
-    msg_id: int | None = None,
     *,
     y_log_scale: bool = False,
-    show_plot: bool = True,
-) -> int | None:
-    """Plot and optionally send learning curves via Telegram.
+) -> tuple[Figure, Axes]:
+    """Create a learning curves plot.
 
     Args:
         training_losses: List of training losses. Every entry corresponds to one epoch.
         validation_losses: List of validation losses. Every entry corresponds to one
             epoch.
+        title: The title of the plot.
         best_epoch: The epoch with the lowest validation loss. Can even be an epoch that
             you want to highlight for whatever reason. If None and validation_losses is
             provided, will automatically be calculated from validation_losses.
-        output_file: The path of the saved plot. If None, saves to
-            $(cwd)/learning_curves.png
-        tg_token: The token of the Telegram bot.
-        tg_chat_id: The unique identifier for the target chat.
-        caption: The caption of the plot on Telegram.
-        msg_id: The id of the Telegram message to edit. If not supplied will send a New
-            message.
         y_log_scale: Whether to set y-axis scale to logarithmic.
-        show_plot: Whether to call `plt.show()`.
 
     Returns:
-        The Telegram message ID.
+        The Figure and Axes objects.
 
     Raises:
         ValueError: If training_losses and validation_losses have different lengths.
@@ -52,15 +42,9 @@ def plot_learning_curves(  # noqa: C901, PLR0913
         msg = "training_losses and validation_losses must have the same length"
         raise ValueError(msg)
 
-    # Try to infer best epoch
+    # Auto-infer best epoch
     if best_epoch is None and validation_losses is not None:
         best_epoch = validation_losses.index(min(validation_losses))
-
-    output_file = (
-        Path(output_file)
-        if output_file is not None
-        else Path.cwd() / "learning_curves.png"
-    )
 
     fig, ax = plt.subplots()
 
@@ -71,6 +55,119 @@ def plot_learning_curves(  # noqa: C901, PLR0913
             validation_losses,
             label="Validation",
         )
+
+    _configure_integer_ticks(ax)
+
+    if best_epoch is not None:
+        _highlight_best_epoch(ax, best_epoch, training_losses, validation_losses)
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_title(title)
+    ax.legend()
+
+    if y_log_scale:
+        ax.set_yscale("log")
+
+    fig.tight_layout()
+
+    return fig, ax
+
+
+@contextmanager
+def learning_curves_plot(
+    training_losses: list[float],
+    validation_losses: list[float] | None = None,
+    title: str = "Learning Curves",
+    best_epoch: int | None = None,
+    *,
+    y_log_scale: bool = False,
+) -> Generator[tuple[Figure, Axes], None, None]:
+    """Context manager for creating learning curves plots.
+
+    Args:
+        training_losses: List of training losses. Every entry corresponds to one epoch.
+        validation_losses: List of validation losses. Every entry corresponds to one
+            epoch.
+        title: The title of the plot.
+        best_epoch: The epoch with the lowest validation loss. Can even be an epoch that
+            you want to highlight for whatever reason. If None and validation_losses is
+            provided, will automatically be calculated from validation_losses.
+        y_log_scale: Whether to set y-axis scale to logarithmic.
+
+    Yields:
+        The Figure and Axes objects.
+
+    Raises:
+        ValueError: If training_losses and validation_losses have different lengths.
+
+    Example:
+        >>> with learning_curves_plot(train_losses, val_losses) as (fig, ax):
+        ...     fig.savefig("output.png", dpi=300)
+
+    """
+    fig, ax = plot_learning_curves(
+        training_losses=training_losses,
+        validation_losses=validation_losses,
+        title=title,
+        best_epoch=best_epoch,
+        y_log_scale=y_log_scale,
+    )
+
+    try:
+        yield fig, ax
+    finally:
+        plt.close(fig)
+
+
+def send_learning_curves_to_telegram(
+    image_path: str | Path,
+    tg_token: str,
+    tg_chat_id: str,
+    caption: str | None = None,
+    msg_id: int | None = None,
+) -> int | None:
+    """Send a learning curves plot on Telegram.
+
+    Args:
+        image_path: Path to the image file to send.
+        tg_token: The token of the Telegram bot.
+        tg_chat_id: The unique identifier for the target chat.
+        caption: The caption of the plot on Telegram.
+        msg_id: The ID of the Telegram message to edit. If not supplied will send a new
+            message.
+
+    Returns:
+        The Telegram message ID, or None if sending failed.
+
+    """
+    image_path = Path(image_path)
+
+    # Send plot on Telegram
+    if tg_token and tg_chat_id:
+        try:
+            if msg_id is None:
+                return send_telegram_photo(
+                    token=tg_token,
+                    chat_id=tg_chat_id,
+                    photo_path=image_path,
+                    caption=caption,
+                )
+            return edit_telegram_media(
+                photo_path=image_path,
+                message_id=msg_id,
+                token=tg_token,
+                chat_id=tg_chat_id,
+                caption=caption,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"Failed to send Telegram photo: {e}")
+
+    return None
+
+
+def _configure_integer_ticks(ax: Axes) -> None:
+    """Set up integer major ticks with appropriate minor ticks."""
     ax.xaxis.set_major_locator(MaxNLocator("auto", integer=True))
     major_ticks = ax.xaxis.get_majorticklocs()
     if len(major_ticks) >= 2:  # noqa: PLR2004
@@ -86,83 +183,49 @@ def plot_learning_curves(  # noqa: C901, PLR0913
 
         ax.xaxis.set_minor_locator(AutoMinorLocator(n_minor))
 
-    if best_epoch is not None:
+
+def _highlight_best_epoch(
+    ax: Axes,
+    best_epoch: int,
+    training_losses: list[float],
+    validation_losses: list[float] | None = None,
+) -> None:
+    """Add scatter points and ticks for best epoch."""
+    best_epoch += 1  # convert to 1-indexed for plotting
+    # Add marker at best epoch value
+    ax.scatter(
+        best_epoch,
+        training_losses[best_epoch - 1],
+    )  # plotting uses 1-indexed epochs
+    if validation_losses is not None:
         ax.scatter(
-            best_epoch + 1,
-            training_losses[best_epoch],
+            best_epoch,
+            validation_losses[best_epoch - 1],
         )  # plotting uses 1-indexed epochs
-        if validation_losses is not None:
-            ax.scatter(
-                best_epoch + 1,
-                validation_losses[best_epoch],
-            )  # plotting uses 1-indexed epochs
 
-        _best_epoch_tick(ax, best_epoch)
-
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss")
-    ax.set_title("Learning Curves")
-    ax.legend()
-
-    if y_log_scale:
-        ax.set_yscale("log")
-
-    fig.tight_layout()
-    fig.savefig(output_file, dpi=300)
-
-    # Send plot on Telegram
-    if tg_token and tg_chat_id:
-        try:
-            if msg_id is None:
-                msg_id = send_telegram_photo(
-                    token=tg_token,
-                    chat_id=tg_chat_id,
-                    photo_path=output_file,
-                    caption=caption,
-                )
-            else:
-                msg_id = edit_telegram_media(
-                    photo_path=output_file,
-                    message_id=msg_id,
-                    token=tg_token,
-                    chat_id=tg_chat_id,
-                    caption=caption,
-                )
-        except (FileNotFoundError, RuntimeError) as e:
-            print(f"Failed to send Telegram photo: {e}")
-
-    if show_plot:
-        plt.show()
-    plt.close(fig)
-
-    return msg_id
-
-
-def _best_epoch_tick(ax: Axes, best_epoch: int) -> None:
-    """Add a label and minor tick at `best_epoch` on the supplied axes."""
     # Add best epoch as a minor tick
     current_minor_ticks = list(ax.get_xticks(minor=True))
-    if best_epoch + 1 not in current_minor_ticks:
-        current_minor_ticks.append(best_epoch + 1)
+    if best_epoch not in current_minor_ticks:
+        current_minor_ticks.append(best_epoch)
         current_minor_ticks.sort()
     ax.set_xticks(current_minor_ticks, minor=True)
 
     # Set label only for the best epoch tick
     minor_labels = [
-        str(best_epoch + 1) if x == best_epoch + 1 else "" for x in current_minor_ticks
+        str(best_epoch) if x == best_epoch else "" for x in current_minor_ticks
     ]
     ax.set_xticklabels(minor_labels, minor=True)
 
     # Check if best epoch label conflicts with major tick labels
     digit_width = 0.03  # rough estimate: each digit is about 3% of the x-axis range
     x_range = ax.get_xlim()[1] - ax.get_xlim()[0]
-    best_label_width = len(str(int(best_epoch + 1))) * digit_width * x_range
+    best_label_width = len(str(int(best_epoch))) * digit_width * x_range
 
     has_conflict = False
     for tick in ax.get_xticks():
         tick_label_width = len(str(int(tick))) * digit_width * x_range
         min_distance = (best_label_width + tick_label_width) / 2
-        if abs(best_epoch + 1 - tick) < min_distance:
+        if abs(best_epoch - tick) < min_distance:
             has_conflict = True
             break
 
@@ -190,12 +253,12 @@ def set_plt_style(
 
     if style_path is None:
         # Look in default style location
-        with contextlib.suppress(OSError):
+        with suppress(OSError):
             plt.style.use(styles)
             return
 
         # Look in local mplstyles directory
-        with contextlib.suppress(OSError):
+        with suppress(OSError):
             plt.style.use([Path("mplstyles") / f"{style}.mplstyle" for style in styles])
             return
 
