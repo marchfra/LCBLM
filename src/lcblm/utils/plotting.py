@@ -3,7 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 from trainvox import edit_telegram_media, send_telegram_photo
 
 from lcblm._logging import utils_logger as logger
@@ -70,7 +70,19 @@ def plot_learning_curves(  # noqa: PLR0913
             label="Validation",
         )
     ax.xaxis.set_major_locator(MaxNLocator("auto", integer=True))
-    ax.xaxis.set_minor_locator(MaxNLocator(len(training_losses) + 1, integer=True))
+    major_ticks = ax.xaxis.get_majorticklocs()
+    if len(major_ticks) >= 2:  # noqa: PLR2004
+        # Compute minor ticks after major ticks are placed
+        major_spacing = int(major_ticks[1] - major_ticks[0])
+        # Find a nice divisor of major_spacing for minor ticks
+        divisors = [
+            d
+            for d in [5, 4, 3, 2]
+            if major_spacing % d == 0 and major_spacing // d >= 1
+        ]
+        n_minor = divisors[0] if divisors else major_spacing
+
+        ax.xaxis.set_minor_locator(AutoMinorLocator(n_minor))
 
     if best_epoch is not None:
         ax.scatter(best_epoch + 1, training_losses[best_epoch])
