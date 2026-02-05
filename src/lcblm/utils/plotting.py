@@ -42,10 +42,6 @@ def plot_learning_curves(
         msg = "training_losses and validation_losses must have the same length"
         raise ValueError(msg)
 
-    # Auto-infer best epoch
-    if best_epoch is None and validation_losses is not None:
-        best_epoch = validation_losses.index(min(validation_losses))
-
     fig, ax = plt.subplots()
 
     ax.plot(range(1, len(training_losses) + 1), training_losses, label="Training")
@@ -57,6 +53,10 @@ def plot_learning_curves(
         )
 
     _configure_integer_ticks(ax)
+
+    # Auto-infer best epoch
+    if best_epoch is None and validation_losses is not None:
+        best_epoch = validation_losses.index(min(validation_losses))
 
     if best_epoch is not None:
         _highlight_best_epoch(ax, best_epoch, training_losses, validation_losses)
