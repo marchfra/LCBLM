@@ -44,6 +44,7 @@ import json
 import math
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import torch
 from better_kaggle_secrets import UserSecretsClient
 from huggingface_hub import login as hf_login
@@ -59,8 +60,12 @@ from trainvox import (
 )
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
-from lcblm.utils.data.next_token_dataset import NextTokenDataset, Sentence
-from lcblm.utils.plotting import plot_learning_curves, set_plt_style
+from lcblm.utils.data import NextTokenDataset, Sentence, typed_dataloader
+from lcblm.utils.plotting import (
+    learning_curves_plot,
+    send_learning_curves_to_telegram,
+    set_plt_style,
+)
 from lcblm.utils.seed import set_seeds
 
 # %% [markdown]
@@ -133,7 +138,7 @@ EOS_TOKEN_ID: int = tokenizer.eos_token_id
 # #### 1.2 - Create dataset
 
 # %%
-datasets = {
+datasets: dict[str, NextTokenDataset] = {
     split: NextTokenDataset(
         input_ids=data[split]["input_ids"],
         attention_mask=data[split]["attention_masks"],
@@ -182,7 +187,7 @@ def lr_lambda_warmup(current_epoch: int) -> float:
 scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda_warmup)
 
 # %%
-dataloaders = {
+dataloaders: dict[str, DataLoader[Sentence]] = {
     split: DataLoader(
         datasets[split],
         batch_size=BATCH_SIZE,
@@ -195,6 +200,8 @@ dataloaders = {
 # ## 3 - Train classifier
 
 # %%
+LEARNING_CURVES_PATH = OUTPUT_PATH / "learning_curves.png"
+
 if TG_TOKEN and TG_CHAT_ID:
     v = CompositeStrategy(
         TelegramTqdmStrategy(token=TG_TOKEN, chat_id=TG_CHAT_ID),
@@ -219,8 +226,7 @@ msg_id: int | None = None
 for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
     epoch_loss = 0.0
     classifier.train()
-    batch: Sentence
-    for batch in dataloaders["train"]:
+    for batch in typed_dataloader(dataloaders["train"]):
         embeddings_batch = batch.embeddings.to(device)
         next_token_ids_batch = batch.next_token_ids.to(device)
         next_attention_mask_batch = batch.next_attention_mask.to(
@@ -246,8 +252,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
     val_loss = 0.0
     classifier.eval()
     with torch.inference_mode():
-        batch: Sentence
-        for batch in dataloaders["validation"]:
+        for batch in typed_dataloader(dataloaders["validation"]):
             embeddings_batch = batch.embeddings.to(device)
             next_token_ids_batch = batch.next_token_ids.to(device)
             next_attention_mask_batch = batch.next_attention_mask.to(
@@ -276,17 +281,20 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         torch.save(best_classifier_state, OUTPUT_PATH / "best_classifier_state.pt")
 
     scheduler.step()
-    if epoch % 10 == 0 and epoch != 0:
-        msg_id = plot_learning_curves(
+    if epoch % 2 == 0 and epoch != 0:
+        with learning_curves_plot(
             training_losses,
             validation_losses,
-            best_epoch,
-            output_path=OUTPUT_PATH,
-            tg_token=TG_TOKEN,
-            tg_chat_id=TG_CHAT_ID,
-            caption="Retrained head intermediate curves",
-            msg_id=msg_id,
-        )
+            best_epoch=best_epoch,
+        ) as (fig, ax):
+            fig.savefig(LEARNING_CURVES_PATH, dpi=300)
+            msg_id = send_learning_curves_to_telegram(
+                image_path=LEARNING_CURVES_PATH,
+                tg_token=TG_TOKEN,
+                tg_chat_id=TG_CHAT_ID,
+                caption="Retrained head intermediate curves",
+                msg_id=msg_id,
+            )
     v.on_epoch_end(epoch, train_loss=epoch_loss, val_loss=val_loss)
 
 v.on_train_end()
@@ -298,13 +306,17 @@ with (OUTPUT_PATH / "losses.json").open("w") as f:
     )
 
 # %%
-plot_learning_curves(
+with learning_curves_plot(
     training_losses,
     validation_losses,
-    best_epoch,
-    output_path=OUTPUT_PATH,
-    tg_token=TG_TOKEN,
-    tg_chat_id=TG_CHAT_ID,
-    caption="Retrained head final curves",
-    msg_id=msg_id,
-)
+    best_epoch=best_epoch,
+) as (fig, ax):
+    fig.savefig(LEARNING_CURVES_PATH, dpi=300)
+    msg_id = send_learning_curves_to_telegram(
+        image_path=LEARNING_CURVES_PATH,
+        tg_token=TG_TOKEN,
+        tg_chat_id=TG_CHAT_ID,
+        caption="Retrained head final curves",
+        msg_id=msg_id,
+    )
+    plt.show()
