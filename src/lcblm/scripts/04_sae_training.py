@@ -46,9 +46,6 @@ import torch
 from better_kaggle_secrets import UserSecretsClient
 from huggingface_hub import login as hf_login
 from sae_utils import Config, SAEDataset, train_sae
-from torch.nn import functional as F  # noqa: N812
-from torch.utils.data import DataLoader
-from tqdm.notebook import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from lcblm.utils.plotting import (
