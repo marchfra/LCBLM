@@ -289,6 +289,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         with learning_curves_plot(
             training_losses,
             validation_losses,
+            title="Finetuned Classifier Head Learning Curves",
             best_epoch=best_epoch,
         ) as (fig, ax):
             fig.savefig(LEARNING_CURVES_PATH, dpi=300)
@@ -313,6 +314,7 @@ with (OUTPUT_PATH / "losses.json").open("w") as f:
 with learning_curves_plot(
     training_losses,
     validation_losses,
+    title="Finetuned Classifier Head Learning Curves",
     best_epoch=best_epoch,
 ) as (fig, ax):
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
@@ -320,7 +322,7 @@ with learning_curves_plot(
         image_path=LEARNING_CURVES_PATH,
         tg_token=TG_TOKEN,
         tg_chat_id=TG_CHAT_ID,
-        caption="Retrained head final curves",
+        caption="Finetuned head final curves",
         msg_id=msg_id,
     )
     plt.show()

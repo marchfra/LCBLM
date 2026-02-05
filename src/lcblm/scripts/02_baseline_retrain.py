@@ -285,6 +285,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         with learning_curves_plot(
             training_losses,
             validation_losses,
+            title="Retrained Classifier Head Learning Curves",
             best_epoch=best_epoch,
         ) as (fig, ax):
             fig.savefig(LEARNING_CURVES_PATH, dpi=300)
@@ -309,6 +310,7 @@ with (OUTPUT_PATH / "losses.json").open("w") as f:
 with learning_curves_plot(
     training_losses,
     validation_losses,
+    title="Retrained Classifier Head Learning Curves",
     best_epoch=best_epoch,
 ) as (fig, ax):
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
