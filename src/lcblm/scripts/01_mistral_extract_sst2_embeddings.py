@@ -51,6 +51,7 @@ from dataclasses import dataclass, field
 
 import torch
 from better_kaggle_secrets import UserSecretsClient
+from datasets import Dataset as HFDataset
 from datasets import load_dataset
 from datasets.dataset_dict import DatasetDict
 from huggingface_hub import login as hf_login
@@ -60,6 +61,7 @@ from trainvox import send_telegram_message
 from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerBase
 
 from lcblm.utils.seed import set_seeds
+
 
 # %% [markdown]
 # #### Set seed for reproducibility
@@ -147,12 +149,12 @@ for p in llm.parameters():
 # #### Load dataset and relevant tokenization setup
 
 # %%
-datasets: DatasetDict = load_dataset(config.dataset)  # pyright: ignore[reportAssignmentType]
+datasets: DatasetDict = load_dataset(config.dataset)
 datasets.pop("test", None)  # we don't need the test set
 for split, dataset in datasets.items():
     print(f"{split} samples: {len(dataset)}")
 
-remove_columns = ["text", "label_text"]
+remove_columns: list[str] = ["text", "label_text"]
 
 
 def tokenize_function(examples):  # noqa: ANN001, ANN201
@@ -194,7 +196,7 @@ for split, dataset in datasets.items():
     print(f"\n--- Processing split: {split} ---")
 
     # Tokenize dataset
-    encoded_dataset = dataset.map(
+    encoded_dataset: HFDataset = dataset.map(
         tokenize_function,
         batched=True,
         batch_size=len(dataset),
@@ -214,6 +216,7 @@ for split, dataset in datasets.items():
 
     # Pass data through Mistral to get embeddings
     with torch.inference_mode():
+        batch: dict[str, torch.Tensor]
         for batch in tqdm(
             extraction_loader,
             desc=f"Extracting {split} embeddings",

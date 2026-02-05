@@ -97,6 +97,19 @@ OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 # ## 1 - Load data
 
 # %%
+EMBEDDINGS_PATH = Path("/kaggle/input/sst2-mistral-embeddings/sst2_mistral_embeddings")
+SPLITS = ["train", "validation"]
+
+if not EMBEDDINGS_PATH.exists():
+    msg = f"Data path {EMBEDDINGS_PATH} does not exist."
+    raise FileNotFoundError(msg)
+
+data = {
+    split: torch.load(EMBEDDINGS_PATH / f"extracted_features_{split}.pt")
+    for split in SPLITS
+}
+
+# %%
 EMBEDDINGS_PATH = Path("/kaggle/working/sst2_mistral_embeddings")
 SPLITS = ["train", "validation"]
 
@@ -117,8 +130,8 @@ tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
 )
 
-VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType] # Mistral's vocabulary size
-EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType] # End-of-sequence token ID for Mistral
+VOCAB_SIZE: int = tokenizer.vocab_size
+EOS_TOKEN_ID: int = tokenizer.eos_token_id
 
 # %% [markdown]
 # #### 1.2 - Create dataset
@@ -131,13 +144,14 @@ datasets = {split: SAEDataset(data=data[split]["embeddings"]) for split in SPLIT
 
 # %%
 config = Config(
-    n_epochs=200,  # Training time is about 1m 30s per epoch
+    n_epochs=200,  # Training time is about 1m 34s per epoch
     batch_size=256,
     learning_rate=1e-4,
     latent_dim_factor=4,
     k=128,
-    threshold_dead_latent=1_500,  # with 200 epochs and 28 batches there is a total of
-    # 200*28 = 5600 batches, so a threshold of 25_000 would be useless.
+    # With 200 epochs and 28 batches there is a total of 200*28 = 5600 batches, so we
+    # need a threshold smaller than that
+    threshold_dead_latent=1_500,
     k_aux=512,  # consider trying 256 as well
 )
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -151,16 +165,17 @@ sae, epoch_losses, batch_losses, val_losses, best_epoch = train_sae(
 print("Saving trained SAE...")
 torch.save(
     sae.module.state_dict(),
-    OUTPUT_PATH / f"sae_on_mistral_sst2-{config.n_epochs}epochs.pt",
+    OUTPUT_PATH / "best_sae_state.pt",
 )
-torch.save(
-    {
-        "epoch_losses": epoch_losses,
-        "val_losses": val_losses,
-        "batch_losses": batch_losses,
-    },
-    OUTPUT_PATH / "training_losses.pt",
-)
+with (OUTPUT_PATH / "losses.json").open("w") as f:
+    json.dump(
+        {
+            "training_losses": epoch_losses,
+            "validation_losses": val_losses,
+            "batch_losses": batch_losses,
+        },
+        f,
+    )
 print("✅ Trained SAE and training losses saved!")
 
 # %% [markdown]
@@ -194,7 +209,7 @@ plt.show()
 
 # %%
 sae.module.load_state_dict(
-    torch.load(OUTPUT_PATH / f"sae_on_mistral_sst2-{config.n_epochs}epochs.pt"),
+    torch.load(OUTPUT_PATH / "best_sae_state.pt"),
 )
 sae.eval()
 
@@ -244,7 +259,6 @@ val_loader = DataLoader(
 )
 recon_loss = 0.0
 latents_l1_norm = 0.0
-latents_entropy = 0.0
 with torch.no_grad():
     for batch in tqdm(val_loader, desc="Checking for dead latents", unit="batch"):
         embeddings = batch.to(device)
