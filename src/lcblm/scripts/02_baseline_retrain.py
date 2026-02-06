@@ -165,6 +165,7 @@ classifier = nn.Sequential(
     nn.Dropout(p=0.2),
     nn.Linear(datasets[SPLITS[0]].embedding_dimension, VOCAB_SIZE, bias=False),
 ).to(device)
+print(classifier)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = AdamW(classifier.parameters(), lr=LEARNING_RATE)
