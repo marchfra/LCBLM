@@ -185,6 +185,20 @@ with learning_curves_plot(
         caption="Final SAE learning curves",
     )
 
+with learning_curves_plot(
+    batch_losses,
+    title="Training Loss Over Batches",
+) as (fig, ax):
+    ax.set_xlabel("Batch")
+    ax.set_ylabel("CE Loss")
+    fig.savefig(OUTPUT_PATH / "training_loss_over_batches.png", dpi=300)
+    send_learning_curves_to_telegram(
+        OUTPUT_PATH / "training_loss_over_batches.png",
+        tg_token=TG_TOKEN,
+        tg_chat_id=TG_CHAT_ID,
+        caption="SAE training loss over batches",
+    )
+
 fig_batch, ax = plt.subplots(1, 1)
 ax.plot(range(1, len(batch_losses) + 1), batch_losses, label="Batch Loss")
 

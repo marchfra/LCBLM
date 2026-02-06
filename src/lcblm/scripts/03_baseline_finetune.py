@@ -292,6 +292,7 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
             title="Finetuned Classifier Head Learning Curves",
             best_epoch=best_epoch,
         ) as (fig, ax):
+            ax.set_ylabel("CE Loss")
             fig.savefig(LEARNING_CURVES_PATH, dpi=300)
             msg_id = send_learning_curves_to_telegram(
                 image_path=LEARNING_CURVES_PATH,
@@ -317,6 +318,7 @@ with learning_curves_plot(
     title="Finetuned Classifier Head Learning Curves",
     best_epoch=best_epoch,
 ) as (fig, ax):
+    ax.set_ylabel("CE Loss")
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
     msg_id = send_learning_curves_to_telegram(
         image_path=LEARNING_CURVES_PATH,
