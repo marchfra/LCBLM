@@ -1,9 +1,9 @@
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from tqdm.auto import trange
+from trainvox.strategies import VerbosityStrategy
 
 from .activations import TopK, update_dead_latent_counts
 from .config import Config
@@ -42,8 +42,7 @@ def train_sae(
     train_set: SAEDataset,
     val_set: SAEDataset,
     *,
-    # verbose: bool = True,
-    verbose: Literal["print", "tqdm", "telegram"] | None = None,
+    verbosity_strategy: VerbosityStrategy,
 ) -> _SAETrainingOutput:
     """Train a Sparse Autoencoder (SAE) model on the provided dataset.
 
@@ -54,7 +53,7 @@ def train_sae(
         config: Configuration object containing training and model hyperparameters.
         train_set: Input activations dataset.
         val_set: Validation dataset.
-        verbose: Choose if and how to display training progress. Defaults to None.
+        verbosity_strategy: The verbosity strategy to use during training.
 
     Returns:
         A _SAETrainingOutput named tuple containing the best trained SAE model, training
@@ -62,11 +61,7 @@ def train_sae(
         the epoch number with the best validation loss.
 
     """
-    if verbose == "telegram":
-        msg = "telegram tqdm not implemented yet"
-        raise NotImplementedError(msg)
-
-    activation = TopK(k=config.k)
+    activation = nn.Sequential(TopK(k=config.k), nn.ReLU())
 
     # Create data loaders
     train_loader, val_loader = _create_data_loaders(
@@ -76,16 +71,12 @@ def train_sae(
     )
 
     # Print training information
-    if verbose is not None:
-        if verbose != "telegram":
-            _print_training_info(
-                config=config,
-                train_set=train_set,
-                activation=activation,
-                n_batches=len(train_loader),
-            )
-        else:
-            pass
+    _print_training_info(
+        config=config,
+        train_set=train_set,
+        activation=activation,
+        n_batches=len(train_loader),
+    )
 
     # Initialize model
     sae = _initialize_sae(
@@ -107,8 +98,17 @@ def train_sae(
     best_sae_state_dict = sae.module.state_dict()
     best_epoch = -1
 
+    verbosity_strategy.on_train_begin(
+        config.n_epochs,
+        msg="Starting training of TopK SAE",
+    )
+
     # Training loop
-    for epoch in trange(config.n_epochs, desc="SAE training", unit="epoch"):
+    for epoch in verbosity_strategy.wrap_epoch_iterator(
+        range(config.n_epochs),
+        desc="SAE training",
+        unit="epoch",
+    ):
         # Train for one epoch
         epoch_batch_losses, dead_neurons_counts = _train_one_epoch(
             sae=sae,
@@ -134,6 +134,10 @@ def train_sae(
             best_val_loss = epoch_val_loss
             best_sae_state_dict = sae.module.state_dict()
             best_epoch = epoch
+
+        verbosity_strategy.on_epoch_end(epoch, epoch_train_losses[-1], epoch_val_loss)
+
+    verbosity_strategy.on_train_end()
 
     # Load best model
     sae.module.load_state_dict(best_sae_state_dict)
