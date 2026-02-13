@@ -45,15 +45,22 @@ import matplotlib.pyplot as plt
 import torch
 from better_kaggle_secrets import UserSecretsClient
 from huggingface_hub import login as hf_login
-from sae_utils import Config, SAEDataset, train_sae
+from trainvox import (
+    CompositeStrategy,
+    PrintStrategy,
+    TelegramTqdmStrategy,
+    TqdmStrategy,
+)
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
+from lcblm.sae_utils import Config, SAEDataset, train_sae
 from lcblm.utils.plotting import (
     learning_curves_plot,
     send_learning_curves_to_telegram,
     set_plt_style,
 )
 from lcblm.utils.seed import set_seeds
+
 
 # %% [markdown]
 # #### Set seed for reproducibility
@@ -125,7 +132,7 @@ EOS_TOKEN_ID: int = tokenizer.eos_token_id
 # #### 1.2 - Create dataset
 
 # %%
-datasets = {split: SAEDataset(data=data[split]["embeddings"]) for split in SPLITS}
+datasets = {split: SAEDataset(input_data=data[split]["embeddings"]) for split in SPLITS}
 
 # %% [markdown]
 # ## 3 - Train SAE
@@ -145,10 +152,22 @@ config = Config(
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # %%
+if TG_TOKEN and TG_CHAT_ID:
+    v = CompositeStrategy(
+        TelegramTqdmStrategy(token=TG_TOKEN, chat_id=TG_CHAT_ID),
+        PrintStrategy(),
+    )
+else:
+    v = CompositeStrategy(
+        TqdmStrategy(),
+        PrintStrategy(),
+    )
+
 sae, epoch_losses, batch_losses, val_losses, best_epoch = train_sae(
     config,
     datasets["train"],
     datasets["validation"],
+    verbosity_strategy=v,
 )
 print("Saving trained SAE...")
 torch.save(
