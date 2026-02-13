@@ -79,6 +79,8 @@ class NextTokenDataset(Dataset[Sentence]):
     def __getitem__(self, idx: list[int]) -> list[Sentence]: ...
     @overload
     def __getitem__(self, idx: slice) -> list[Sentence]: ...
+    @overload
+    def __getitem__(self, idx: range) -> list[Sentence]: ...
     def __getitem__(self, idx):
         if isinstance(idx, int):
             input_ids = self.input_ids[idx]
@@ -103,7 +105,7 @@ class NextTokenDataset(Dataset[Sentence]):
                 next_attention_mask=next_attention_mask,
             )
 
-        if isinstance(idx, list):
+        if isinstance(idx, (list, range)):
             return [self[i] for i in idx]
 
         if isinstance(idx, slice):
