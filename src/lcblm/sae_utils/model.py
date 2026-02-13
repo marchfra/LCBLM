@@ -40,6 +40,8 @@ class SparseAE(Module):
         latent_dim: int,
         activation: TopK,
         epsilon: float = 1e-7,
+        *,
+        tied_weights: bool = True,
     ) -> None:
         """Initialize the SparseAE (Sparse AutoEncoder) module.
 
@@ -48,6 +50,8 @@ class SparseAE(Module):
             latent_dim: Size of latent dimension.
             activation: Activation function to use in the network.
             epsilon: Small value for numerical stability in normalization.
+            tied_weights: Whether to initialize the weights of the decoder to the
+                transpose of the weights of the encoder.
 
         """
         super().__init__()
@@ -70,8 +74,8 @@ class SparseAE(Module):
             bias=False,
         )
 
-        # Tied weights
-        self.lin_decoder.weight.data = self.lin_encoder.weight.data.T.clone()
+        if tied_weights:
+            self.lin_decoder.weight.data = self.lin_encoder.weight.data.T.clone()
 
     @property
     def device(self) -> torch.device:
