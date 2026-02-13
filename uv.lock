@@ -2836,7 +2836,7 @@ wheels = [
 [[package]]
 name = "trainvox"
 version = "0.8.0"
-source = { git = "http://github.com/marchfra/trainvox#212c742255a80c35c25f1aaf4feca6bdb67f7b4c" }
+source = { git = "http://github.com/marchfra/trainvox#96148c238a144a6b5a0a9575a7cb3281ba741780" }
 dependencies = [
     { name = "requests" },
     { name = "tqdm" },
