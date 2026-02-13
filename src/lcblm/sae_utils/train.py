@@ -160,10 +160,10 @@ def _print_training_info(
     """Print training configuration information."""
     print("Starting SAE training")
     print(f"Using activation function: {activation}")
-    print(f"Input shape: {train_set.data.shape}")
+    print(f"Input shape: {train_set.input_data.shape}")
     latent_shape = (
-        *train_set.data.shape[:-1],
-        train_set.data.shape[-1] * config.latent_dim_factor,
+        *train_set.input_data.shape[:-1],
+        train_set.input_data.shape[-1] * config.latent_dim_factor,
     )
     print(
         f"Latent dimension factor: {config.latent_dim_factor} "
