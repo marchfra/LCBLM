@@ -15,18 +15,17 @@ dependencies = [
     "torch; sys_platform != 'darwin' or platform_machine == 'arm64'",
     "matplotlib>=3.10.7",
     "trainvox @ git+http://github.com/marchfra/trainvox",
-    "sae-utils @ git+https://github.com/marchfra/sae-utils.git",
     "transformers>=4.57.3",
     "python-dotenv>=1.2.1",
     "better-kaggle-secrets @ git+https://github.com/marchfra/better-kaggle-secrets",
     "datasets>=4.4.1",
     "pydantic>=2.12.5",
     "evaluate>=0.4.6",
+    "geom-median>=0.1.0",
 ]
 
 [tool.uv.sources]
 trainvox = { git = "http://github.com/marchfra/trainvox" }
-sae-utils = { git = "https://github.com/marchfra/sae-utils.git" }
 better-kaggle-secrets = { git = "https://github.com/marchfra/better-kaggle-secrets" }
 
 [tool.commitizen]
