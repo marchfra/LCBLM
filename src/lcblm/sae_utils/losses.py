@@ -5,7 +5,7 @@ from torch.nn.functional import mse_loss
 from lcblm.utils import clamp_positive
 
 from .activations import TopK
-from .model import SAEResult, SparseAE
+from .model import SAEOutput, SparseAE
 
 loss_recon_fn = mse_loss
 
@@ -13,7 +13,7 @@ loss_recon_fn = mse_loss
 def loss_k_aux(
     autoencoder: SparseAE,
     x: Tensor,
-    sae_output: SAEResult,
+    sae_output: SAEOutput,
     dead_latents_mask: Tensor,
     k_aux: int = 512,
 ) -> Tensor:

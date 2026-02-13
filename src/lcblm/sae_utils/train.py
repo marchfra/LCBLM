@@ -9,7 +9,7 @@ from .activations import TopK, update_dead_latent_counts
 from .config import Config
 from .dataset import SAEDataset, compute_tied_bias
 from .losses import loss_k_aux, loss_recon_fn, loss_top_k
-from .model import SAEResult, SparseAE
+from .model import SAEOutput, SparseAE
 
 
 class _SAETrainingOutput(NamedTuple):

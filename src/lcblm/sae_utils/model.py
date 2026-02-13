@@ -8,7 +8,7 @@ from .activations import TopK
 from .normalization import LayerNorm, NormParams
 
 
-class SAEResult(NamedTuple):
+class SAEOutput(NamedTuple):
     """A NamedTuple that stores the results of a Sparse Autoencoder (SAE) forward pass.
 
     Attributes:
@@ -136,7 +136,7 @@ class SparseAE(Module):
         x_rec = x_rec * (norm.std + self.eps) + norm.mu
         return x_rec
 
-    def forward(self, x: Tensor) -> SAEResult:
+    def forward(self, x: Tensor) -> SAEOutput:
         """Perform a forward pass through the Sparse AutoEncoder (SAE).
 
         This method normalizes the input, encodes it to a latent representation,
@@ -159,7 +159,7 @@ class SparseAE(Module):
         z = self.activation(z_pre_activation)
         x_reconstructed = self.decode(z, norm)
 
-        return SAEResult(
+        return SAEOutput(
             latents=z,
             latents_pre_activation=z_pre_activation,
             recon=x_reconstructed,
