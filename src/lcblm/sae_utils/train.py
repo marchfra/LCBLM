@@ -2,6 +2,7 @@ from typing import Literal, NamedTuple
 
 import torch
 from torch.nn import DataParallel
+from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
@@ -150,7 +151,7 @@ def train_sae(
 def _print_training_info(
     config: Config,
     train_set: SAEDataset,
-    activation: TopK,
+    activation: nn.Module,
     n_batches: int,
 ) -> None:
     """Print training configuration information."""
@@ -196,8 +197,8 @@ def _create_data_loaders(
 def _initialize_sae(
     train_set: SAEDataset,
     config: Config,
-    activation: TopK,
 ) -> DataParallel[SparseAE]:
+    activation: nn.Module,
     """Initialize the Sparse Autoencoder model."""
     sae = SparseAE(
         input_dim=train_set.num_features,
@@ -212,7 +213,7 @@ def _initialize_sae(
 
 def _compute_batch_loss(
     sae: SparseAE,
-    sae_output: SAEResult,
+    sae_output: SAEOutput,
     x: torch.Tensor,
     dead_latents_mask: torch.Tensor,
     config: Config,

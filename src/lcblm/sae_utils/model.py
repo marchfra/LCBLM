@@ -4,7 +4,6 @@ import torch
 from torch import Tensor, nn
 from torch.nn import Module
 
-from .activations import TopK
 from .normalization import LayerNorm, NormParams
 
 
@@ -38,7 +37,7 @@ class SparseAE(Module):
         self,
         input_dim: int,
         latent_dim: int,
-        activation: TopK,
+        activation: nn.Module,
         epsilon: float = 1e-7,
         *,
         tied_weights: bool = True,
@@ -67,7 +66,7 @@ class SparseAE(Module):
             out_features=self.latent_dim,
             bias=False,
         )
-        self.activation = nn.Sequential(activation, nn.ReLU())
+        self.activation = activation
         self.lin_decoder = nn.Linear(
             in_features=self.latent_dim,
             out_features=self.input_dim,
