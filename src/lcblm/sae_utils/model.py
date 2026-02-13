@@ -88,9 +88,9 @@ class SparseAE(Module):
             tied_bias: Tensor to initialize the tied bias.
 
         """
-        if tied_bias.shape != (self.input_dim,):
+        if tied_bias.shape != self.tied_bias.shape:
             msg = (
-                f"tied_bias must have shape ({self.input_dim},), "
+                f"tied_bias must have shape {self.tied_bias.shape}, "
                 f"but got {tied_bias.shape}",
             )
             raise ValueError(msg)
@@ -136,8 +136,7 @@ class SparseAE(Module):
 
         """
         x_rec = self.lin_decoder(z) + self.tied_bias
-        x_rec = x_rec * (norm.std + self.eps) + norm.mu
-        return x_rec
+        return x_rec * (norm.std + self.eps) + norm.mu
 
     def forward(self, x: Tensor) -> SAEOutput:
         """Perform a forward pass through the Sparse AutoEncoder (SAE).

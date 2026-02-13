@@ -15,18 +15,12 @@ from .model import SAEOutput, SparseAE
 class _SAETrainingOutput(NamedTuple):
     """Named tuple describing the outputs of a Sparse Autoencoder training run.
 
-    Attributes
-    ----------
-    sae : SparseAE
-        The trained Sparse Autoencoder instance returned after training.
-    epoch_train_losses : list[float]
-        Training loss recorded at the end of each epoch.
-    batch_train_losses : list[float]
-        Training loss recorded for each batch across all epochs.
-    epoch_val_losses : list[float]
-        Validation loss recorded at the end of each epoch.
-    best_epoch : int
-        Index (0-based) of the epoch with the lowest validation loss.
+    Attributes:
+    sae: The trained Sparse Autoencoder instance returned after training.
+    epoch_train_losses: Training loss recorded at the end of each epoch.
+    batch_train_losses: Training loss recorded for each batch across all epochs.
+    epoch_val_losses: Validation loss recorded at the end of each epoch.
+    best_epoch: Index (0-based) of the epoch with the lowest validation loss.
 
     """
 
