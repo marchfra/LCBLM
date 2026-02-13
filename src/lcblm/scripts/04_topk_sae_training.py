@@ -98,7 +98,7 @@ if HF_TOKEN is not None:
 # #### Define output path
 
 # %%
-OUTPUT_PATH = Path("sae")
+OUTPUT_PATH = Path("topk_sae")
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
@@ -171,7 +171,7 @@ sae, epoch_losses, batch_losses, val_losses, best_epoch = train_sae(
 )
 print("Saving trained SAE...")
 torch.save(
-    sae.module.state_dict(),
+    sae.state_dict(),
     OUTPUT_PATH / "best_sae_state.pt",
 )
 with (OUTPUT_PATH / "losses.json").open("w") as f:
@@ -217,15 +217,3 @@ with learning_curves_plot(
         tg_chat_id=TG_CHAT_ID,
         caption="SAE training loss over batches",
     )
-
-fig_batch, ax = plt.subplots(1, 1)
-ax.plot(range(1, len(batch_losses) + 1), batch_losses, label="Batch Loss")
-
-ax.set_xlabel("Batch")
-ax.set_ylabel("Loss")
-ax.set_title("Training Loss Over Batches")
-ax.legend()
-
-fig_batch.tight_layout()
-fig_batch.savefig(OUTPUT_PATH / "training_loss_over_batches.png", dpi=300)
-plt.show()
