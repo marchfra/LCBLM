@@ -1,8 +1,8 @@
-from sae_utils.activations import TopK
-from sae_utils.config import Config
-from sae_utils.dataset import SAEDataset
-from sae_utils.model import SparseAE
-from sae_utils.train import train_sae
+from .activations import TopK
+from .config import Config
+from .dataset import SAEDataset
+from .model import SparseAE
+from .train import train_sae
 
 __all__ = [
     "Config",
