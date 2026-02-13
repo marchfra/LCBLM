@@ -1,7 +1,6 @@
 from typing import Literal, NamedTuple
 
 import torch
-from torch.nn import DataParallel
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
@@ -31,7 +30,7 @@ class _SAETrainingOutput(NamedTuple):
 
     """
 
-    sae: DataParallel[SparseAE]
+    sae: SparseAE
     epoch_train_losses: list[float]
     batch_train_losses: list[float]
     epoch_val_losses: list[float]
@@ -197,16 +196,15 @@ def _create_data_loaders(
 def _initialize_sae(
     train_set: SAEDataset,
     config: Config,
-) -> DataParallel[SparseAE]:
     activation: nn.Module,
+) -> SparseAE:
     """Initialize the Sparse Autoencoder model."""
     sae = SparseAE(
         input_dim=train_set.num_features,
-        latent_dim_factor=config.latent_dim_factor,
+        latent_dim=train_set.num_features * config.latent_dim_factor,
         activation=activation,
     )
     sae.init_tied_bias(compute_tied_bias(train_set))
-    sae = DataParallel(sae)
     sae.to(config.device)
     return sae
 
@@ -238,7 +236,7 @@ def _compute_batch_loss(
 
 
 def _train_one_epoch(
-    sae: DataParallel[SparseAE],
+    sae: SparseAE,
     optimizer: torch.optim.Optimizer,
     train_loader: DataLoader,
     dead_latents_counts: torch.Tensor,
@@ -284,7 +282,7 @@ def _train_one_epoch(
 
 
 def _validate_epoch(
-    sae: DataParallel[SparseAE],
+    sae: SparseAE,
     val_loader: DataLoader,
     dead_neurons_counts: torch.Tensor,
     config: Config,
