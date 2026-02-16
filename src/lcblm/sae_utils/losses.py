@@ -78,7 +78,7 @@ def bernoulli_kl_loss(logits: Tensor, alpha: float) -> Tensor:
     enforcing sparsity in concept-based models or sparse autoencoders.
 
     The KL divergence for Bernoulli distributions is:
-        KL(p || q) = (1-p)*log((1-p)/(1-q)) + p*log(p/q)
+        KL(p || q) = (1 - p) * log((1 - p) / (1 - q)) + p * log(p / q)
 
     where p is the empirical probability (averaged sigmoid of logits over the batch)
     and q is the target probability alpha.
