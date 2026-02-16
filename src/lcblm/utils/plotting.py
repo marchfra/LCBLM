@@ -16,8 +16,6 @@ def plot_learning_curves(
     validation_losses: list[float] | None = None,
     title: str = "Learning Curves",
     best_epoch: int | None = None,
-    *,
-    y_log_scale: bool = False,
 ) -> tuple[Figure, Axes]:
     """Create a learning curves plot.
 
@@ -29,7 +27,6 @@ def plot_learning_curves(
         best_epoch: The epoch with the lowest validation loss. Can even be an epoch that
             you want to highlight for whatever reason. If None and validation_losses is
             provided, will automatically be calculated from validation_losses.
-        y_log_scale: Whether to set y-axis scale to logarithmic.
 
     Returns:
         The Figure and Axes objects.
@@ -66,9 +63,6 @@ def plot_learning_curves(
     ax.set_title(title)
     ax.legend()
 
-    if y_log_scale:
-        ax.set_yscale("log")
-
     fig.tight_layout()
 
     return fig, ax
@@ -80,8 +74,6 @@ def learning_curves_plot(
     validation_losses: list[float] | None = None,
     title: str = "Learning Curves",
     best_epoch: int | None = None,
-    *,
-    y_log_scale: bool = False,
 ) -> Generator[tuple[Figure, Axes], None, None]:
     """Context manager for creating learning curves plots.
 
@@ -93,7 +85,6 @@ def learning_curves_plot(
         best_epoch: The epoch with the lowest validation loss. Can even be an epoch that
             you want to highlight for whatever reason. If None and validation_losses is
             provided, will automatically be calculated from validation_losses.
-        y_log_scale: Whether to set y-axis scale to logarithmic.
 
     Yields:
         The Figure and Axes objects.
@@ -111,7 +102,6 @@ def learning_curves_plot(
         validation_losses=validation_losses,
         title=title,
         best_epoch=best_epoch,
-        y_log_scale=y_log_scale,
     )
 
     try:
