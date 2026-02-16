@@ -79,22 +79,22 @@ def train_sae(
         activation=activation,
     )
 
-    optimizer = torch.optim.Adam(sae.module.parameters(), lr=config.learning_rate)
+    optimizer = torch.optim.Adam(sae.parameters(), lr=config.learning_rate)
 
     # Initialize tracking variables
     epoch_train_losses: list[float] = []
     epoch_val_losses: list[float] = []
     batch_train_losses: list[float] = []
-    dead_neurons_counts = torch.zeros(sae.module.latent_dim, dtype=torch.long).to(
+    dead_neurons_counts = torch.zeros(sae.latent_dim, dtype=torch.long).to(
         config.device,
     )
     best_val_loss = float("inf")
-    best_sae_state_dict = sae.module.state_dict()
+    best_sae_state_dict = sae.state_dict()
     best_epoch = -1
 
     verbosity_strategy.on_train_begin(
         config.n_epochs,
-        msg="Starting training of TopK SAE",
+        msg="Starting training of *TopK SAE*",
     )
 
     # Training loop
@@ -126,7 +126,7 @@ def train_sae(
         # Save best model based on validation loss
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
-            best_sae_state_dict = sae.module.state_dict()
+            best_sae_state_dict = sae.state_dict()
             best_epoch = epoch
 
         verbosity_strategy.on_epoch_end(epoch, epoch_train_losses[-1], epoch_val_loss)
@@ -134,7 +134,7 @@ def train_sae(
     verbosity_strategy.on_train_end()
 
     # Load best model
-    sae.module.load_state_dict(best_sae_state_dict)
+    sae.load_state_dict(best_sae_state_dict)
 
     return _SAETrainingOutput(
         sae,
@@ -265,7 +265,7 @@ def _train_one_epoch(
         dead_latents_mask = dead_latents_counts > config.threshold_dead_latent
 
         batch_loss = _compute_batch_loss(
-            sae=sae.module,
+            sae=sae,
             sae_output=result,
             x=x,
             dead_latents_mask=dead_latents_mask,
@@ -304,7 +304,7 @@ def _validate_epoch(
             dead_neurons_mask_val = dead_neurons_counts > config.threshold_dead_latent
 
             val_batch_loss = _compute_batch_loss(
-                sae=sae.module,
+                sae=sae,
                 sae_output=val_result,
                 x=x_val,
                 dead_latents_mask=dead_neurons_mask_val,
