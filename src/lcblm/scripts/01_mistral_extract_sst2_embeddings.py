@@ -148,7 +148,7 @@ for p in llm.parameters():
 # #### Load dataset and relevant tokenization setup
 
 # %%
-datasets: DatasetDict = load_dataset(config.dataset)
+datasets: DatasetDict = load_dataset(config.dataset)  # pyright: ignore[reportAssignmentType]
 datasets.pop("test", None)  # we don't need the test set
 for split, dataset in datasets.items():
     print(f"{split} samples: {len(dataset)}")

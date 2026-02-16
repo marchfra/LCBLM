@@ -131,8 +131,8 @@ tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
 )
 
-VOCAB_SIZE: int = tokenizer.vocab_size
-EOS_TOKEN_ID: int = tokenizer.eos_token_id
+VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType]
+EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType]
 
 # %% [markdown]
 # #### 1.2 - Create dataset
@@ -294,13 +294,14 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         ) as (fig, ax):
             ax.set_ylabel("CE Loss")
             fig.savefig(LEARNING_CURVES_PATH, dpi=300)
-            msg_id = send_learning_curves_to_telegram(
-                image_path=LEARNING_CURVES_PATH,
-                tg_token=TG_TOKEN,
-                tg_chat_id=TG_CHAT_ID,
-                caption="Finetuned head intermediate curves",
-                msg_id=msg_id,
-            )
+            if TG_TOKEN is not None and TG_CHAT_ID is not None:
+                msg_id = send_learning_curves_to_telegram(
+                    image_path=LEARNING_CURVES_PATH,
+                    tg_token=TG_TOKEN,
+                    tg_chat_id=TG_CHAT_ID,
+                    caption="Finetuned head intermediate curves",
+                    msg_id=msg_id,
+                )
     v.on_epoch_end(epoch, train_loss=epoch_loss, val_loss=val_loss)
 
 v.on_train_end()
@@ -320,11 +321,12 @@ with learning_curves_plot(
 ) as (fig, ax):
     ax.set_ylabel("CE Loss")
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
-    msg_id = send_learning_curves_to_telegram(
-        image_path=LEARNING_CURVES_PATH,
-        tg_token=TG_TOKEN,
-        tg_chat_id=TG_CHAT_ID,
-        caption="Finetuned head final curves",
-        msg_id=msg_id,
-    )
+    if TG_TOKEN is not None and TG_CHAT_ID is not None:
+        msg_id = send_learning_curves_to_telegram(
+            image_path=LEARNING_CURVES_PATH,
+            tg_token=TG_TOKEN,
+            tg_chat_id=TG_CHAT_ID,
+            caption="Finetuned head final curves",
+            msg_id=msg_id,
+        )
     plt.show()

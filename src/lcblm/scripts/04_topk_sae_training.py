@@ -41,7 +41,6 @@ else:
 import json
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import torch
 from better_kaggle_secrets import UserSecretsClient
 from huggingface_hub import login as hf_login
@@ -125,8 +124,8 @@ tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
 )
 
-VOCAB_SIZE: int = tokenizer.vocab_size
-EOS_TOKEN_ID: int = tokenizer.eos_token_id
+VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType]
+EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType]
 
 # %% [markdown]
 # #### 1.2 - Create dataset
@@ -170,10 +169,7 @@ sae, epoch_losses, batch_losses, val_losses, best_epoch = train_sae(
     verbosity_strategy=v,
 )
 print("Saving trained SAE...")
-torch.save(
-    sae.state_dict(),
-    OUTPUT_PATH / "best_sae_state.pt",
-)
+torch.save(sae.state_dict(), OUTPUT_PATH / "best_sae_state.pt")
 with (OUTPUT_PATH / "losses.json").open("w") as f:
     json.dump(
         {
@@ -195,14 +191,15 @@ with learning_curves_plot(
     val_losses,
     title="SAE Learning Curves",
     best_epoch=best_epoch,
-) as (fig, ax):
+) as (fig, _):
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
-    send_learning_curves_to_telegram(
-        LEARNING_CURVES_PATH,
-        tg_token=TG_TOKEN,
-        tg_chat_id=TG_CHAT_ID,
-        caption="Final SAE learning curves",
-    )
+    if TG_TOKEN is not None and TG_CHAT_ID is not None:
+        send_learning_curves_to_telegram(
+            LEARNING_CURVES_PATH,
+            tg_token=TG_TOKEN,
+            tg_chat_id=TG_CHAT_ID,
+            caption="Final SAE learning curves",
+        )
 
 with learning_curves_plot(
     batch_losses,
@@ -211,9 +208,10 @@ with learning_curves_plot(
     ax.set_xlabel("Batch")
     ax.set_ylabel("CE Loss")
     fig.savefig(OUTPUT_PATH / "training_loss_over_batches.png", dpi=300)
-    send_learning_curves_to_telegram(
-        OUTPUT_PATH / "training_loss_over_batches.png",
-        tg_token=TG_TOKEN,
-        tg_chat_id=TG_CHAT_ID,
-        caption="SAE training loss over batches",
-    )
+    if TG_TOKEN is not None and TG_CHAT_ID is not None:
+        send_learning_curves_to_telegram(
+            OUTPUT_PATH / "training_loss_over_batches.png",
+            tg_token=TG_TOKEN,
+            tg_chat_id=TG_CHAT_ID,
+            caption="SAE training loss over batches",
+        )
