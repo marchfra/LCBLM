@@ -24,6 +24,17 @@ dependencies = [
     "geom-median>=0.1.0",
 ]
 
+[dependency-groups]
+dev = [
+    "commitizen>=4.10.0",
+    "ipykernel>=7.1.0",
+    "ipywidgets>=8.1.8",
+    "jupytext>=1.18.1",
+    "pre-commit>=4.5.0",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+]
+
 [tool.uv.sources]
 trainvox = { git = "http://github.com/marchfra/trainvox" }
 better-kaggle-secrets = { git = "https://github.com/marchfra/better-kaggle-secrets" }
@@ -37,11 +48,23 @@ update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true
 
+[tool.pytest.ini_options]
+addopts = "-ra -q --cov=lcblm --cov-report=html"
+testpaths = ["tests"]
+
 [tool.ruff]
 extend = "~/.config/ruff/ruff.toml"
 
 [tool.ruff.lint.per-file-ignores]
 "src/lcblm/scripts/*.py" = ["E402", "E501", "N999"]
+"tests/**/*.py" = [
+    "S101",    # assert
+    "ARG",     # flake8-unused-arguments
+    "FBT",     # flake8-boolean-trap
+    "PLR2004", # magic-value-comparison
+    "S311",    # suspiciuous-non-cryptographic-random-usage
+    "SLF001",  # private-member-access
+]
 
 [tool.pyright]
 exclude = [".venv"]
@@ -56,12 +79,3 @@ typeCheckingMode = "basic"
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
 build-backend = "uv_build"
-
-[dependency-groups]
-dev = [
-    "commitizen>=4.10.0",
-    "ipykernel>=7.1.0",
-    "ipywidgets>=8.1.8",
-    "jupytext>=1.18.1",
-    "pre-commit>=4.5.0",
-]
