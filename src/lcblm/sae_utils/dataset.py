@@ -23,7 +23,7 @@ class SAEDataset(Dataset[Tensor]):
 
     @property
     def num_features(self) -> int:
-        return self.input_data.shape[1]
+        return self.input_data.shape[-1]
 
     @overload
     def __getitem__(self, idx: int) -> Tensor: ...
