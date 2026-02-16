@@ -47,6 +47,7 @@ extend = "~/.config/ruff/ruff.toml"
 exclude = [".venv"]
 venvPath = "."
 venv = ".venv"
+typeCheckingMode = "basic"
 
 [tool.jupytext.formats]
 "notebooks/" = "ipynb"
