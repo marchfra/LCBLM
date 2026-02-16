@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 
 import pytest
-from src.sae_utils.config import Config
+
+from lcblm.sae_utils.config import Config
 
 
 @pytest.fixture

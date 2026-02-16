@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch.nn import Module
 
-from sae_utils.activations import TopK, update_dead_latent_counts
+from lcblm.sae_utils.activations import TopK, update_dead_latent_counts
 
 
 def test_topkactivation_init_sets_k() -> None:

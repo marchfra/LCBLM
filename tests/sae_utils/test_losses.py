@@ -2,9 +2,9 @@ import pytest
 import torch
 from torch import tensor
 
-from sae_utils.activations import TopK, _all_except_last_dim
-from sae_utils.losses import loss_k_aux, loss_top_k
-from sae_utils.model import SparseAE
+from lcblm.sae_utils.activations import TopK, _all_except_last_dim
+from lcblm.sae_utils.losses import loss_k_aux, loss_top_k
+from lcblm.sae_utils.model import SparseAE
 
 
 @pytest.mark.parametrize(
@@ -27,7 +27,7 @@ def test_loss_top_k(recon_loss: float, aux_loss: float, alpha_aux: float) -> Non
 
 def test_loss_k_aux() -> None:
     topk_activation = TopK(k=2)
-    autoencoder = SparseAE(input_dim=9, latent_dim_factor=1, activation=topk_activation)
+    autoencoder = SparseAE(input_dim=9, latent_dim=9, activation=topk_activation)
     autoencoder.lin_encoder.weight.data = 2 * torch.eye(n=9)
     autoencoder.lin_decoder.weight.data = 0.5 * torch.eye(n=9)
     # print(f"{autoencoder.lin_encoder.weight = }")
@@ -70,5 +70,3 @@ def test_loss_k_aux() -> None:
 
     aux_loss = loss_k_aux(autoencoder, x, sae_output, dead_latents_mask, k_aux)
     print(f"{aux_loss = }")
-
-    assert False

@@ -1,22 +1,22 @@
 import pytest
 import torch
 
-from sae_utils.dataset import SAEDataset, compute_tied_bias
+from lcblm.sae_utils.dataset import SAEDataset, compute_tied_bias
 
 
 def test_sae_training_dataset_init_with_tensor() -> None:
     data = torch.randn(10, 5)
     dataset = SAEDataset(data)
-    assert torch.equal(dataset.data, data)
-    assert isinstance(dataset.data, torch.Tensor)
-    assert dataset.data.shape == (10, 5)
+    assert torch.equal(dataset.input_data, data)
+    assert isinstance(dataset.input_data, torch.Tensor)
+    assert dataset.input_data.shape == (10, 5)
 
 
 def test_sae_training_dataset_init_with_empty_tensor() -> None:
     data = torch.empty(0, 5)
     dataset = SAEDataset(data)
-    assert torch.equal(dataset.data, data)
-    assert dataset.data.shape == (0, 5)
+    assert torch.equal(dataset.input_data, data)
+    assert dataset.input_data.shape == (0, 5)
 
 
 def test_sae_training_dataset_len_with_tensor() -> None:
@@ -86,7 +86,7 @@ def test_tied_bias_initialization_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
     expected_median = torch.ones(3)
     monkeypatch.setattr(
         "sae_utils.dataset.compute_geometric_median",
-        lambda subset: DummyMedianResult(expected_median),
+        lambda _subset: DummyMedianResult(expected_median),
     )
     monkeypatch.setattr(
         torch,

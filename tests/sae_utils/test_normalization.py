@@ -1,6 +1,6 @@
 import torch
 
-from sae_utils.normalization import LayerNorm
+from lcblm.sae_utils.normalization import LayerNorm
 
 
 def test_layernorm_default_eps() -> None:
