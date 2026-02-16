@@ -45,12 +45,13 @@ import matplotlib.pyplot as plt
 import torch
 from better_kaggle_secrets import UserSecretsClient
 from huggingface_hub import login as hf_login
-from sae_utils import SAEDataset, SparseAE, TopK
+from torch import nn
 from torch.nn import functional as F  # noqa: N812
 from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
+from lcblm.sae_utils import SAEDataset, SparseAE, TopK
 from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
 
@@ -113,14 +114,14 @@ tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
 )
 
-VOCAB_SIZE: int = tokenizer.vocab_size
-EOS_TOKEN_ID: int = tokenizer.eos_token_id
+VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType]
+EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType]
 
 # %% [markdown]
 # #### 1.2 - Create dataset
 
 # %%
-val_dataset = SAEDataset(data=val_data["embeddings"])
+val_dataset = SAEDataset(input_data=val_data["embeddings"])
 
 # %% [markdown]
 # ## 2 - Load trained model
@@ -137,8 +138,8 @@ in_dimension = sae_state_dict["lin_encoder.weight"].shape[1]
 latent_factor = sae_state_dict["lin_encoder.weight"].shape[0] // in_dimension
 sae = SparseAE(
     input_dim=in_dimension,
-    latent_dim_factor=latent_factor,
-    activation=TopK(k=TOP_K),
+    latent_dim=in_dimension * latent_factor,
+    activation=nn.Sequential(TopK(k=TOP_K), nn.ReLU()),
 )
 sae.load_state_dict(sae_state_dict)
 sae.to(device)
@@ -177,7 +178,7 @@ sae.eval()
 # %%
 # Track activation counts for each latent
 latent_dim = sae.latent_dim
-context_window = val_dataset.data.shape[1]
+context_window = val_dataset.input_data.shape[1]
 activation_counts = torch.zeros(latent_dim, dtype=torch.long)
 total_samples = len(val_dataset) * context_window
 
@@ -265,21 +266,22 @@ plt.show()
 import numpy as np
 
 # Collect all latent activations
-all_latents = []
+all_latents_ = []
 with torch.inference_mode():
     for batch in tqdm(val_loader, desc="Collecting latents", unit="batch"):
         embeddings = batch.to(device)
         output = sae(embeddings)
         latents = output.latents
         # Flatten batch and sequence dims: (batch, seq, latent) -> (batch*seq, latent)
-        all_latents.append(latents.reshape(-1, latent_dim))
+        all_latents_.append(latents.reshape(-1, latent_dim))
 
-all_latents = torch.cat(all_latents, dim=0)  # Shape: (N_samples, latent_dim)
+all_latents = torch.cat(all_latents_, dim=0)  # Shape: (N_samples, latent_dim)
+del all_latents_
 
 # %%
 from typing import Literal
 
-downsample_method = "max"
+downsample_method: Literal["mean", "max"] = "max"
 DOWNSAMPLE_SIZE = 500
 
 
@@ -316,7 +318,7 @@ def downsample_matrix(
 def plot_matrix_summary(
     matrix: np.ndarray,
     title: str,
-    output_path: str,
+    output_path: str | Path,
     threshold: float = 0.5,
 ) -> dict[str, float | int]:
     """Plot summary statistics instead of full matrix."""

@@ -13,7 +13,7 @@
 # ---
 
 # %% [markdown]
-# # SAE training on Mistral embeddings
+# # TopK SAE training on Mistral embeddings
 #
 # This notebook outputs the trained SAE along with the learning curves and losses.
 
@@ -59,7 +59,6 @@ from lcblm.utils.plotting import (
     set_plt_style,
 )
 from lcblm.utils.seed import set_seeds
-
 
 # %% [markdown]
 # #### Set seed for reproducibility

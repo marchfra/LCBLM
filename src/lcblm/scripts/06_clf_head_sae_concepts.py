@@ -48,7 +48,6 @@ import matplotlib.pyplot as plt
 import torch
 from better_kaggle_secrets import UserSecretsClient
 from huggingface_hub import login as hf_login
-from sae_utils import SparseAE, TopK
 from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -61,6 +60,7 @@ from trainvox import (
 )
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
+from lcblm.sae_utils import SparseAE, TopK
 from lcblm.utils.data import NextTokenDataset, Sentence, typed_dataloader
 from lcblm.utils.memory import free_gpu_memory
 from lcblm.utils.plotting import (
@@ -133,8 +133,8 @@ tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
 )
 
-VOCAB_SIZE: int = tokenizer.vocab_size
-EOS_TOKEN_ID: int = tokenizer.eos_token_id
+VOCAB_SIZE: int = tokenizer.vocab_size  # pyright: ignore[reportAssignmentType]
+EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentType]
 
 # %% [markdown]
 # #### 1.2 - Create dataset
@@ -162,11 +162,10 @@ sae_state_dict = torch.load(
     "/kaggle/input/sae-on-mistral-embeddings/pytorch/default/1/best_sae_state.pt",
 )
 in_dimension: int = sae_state_dict["lin_encoder.weight"].shape[1]
-latent_factor: int = sae_state_dict["lin_encoder.weight"].shape[0] // in_dimension
-latent_dim: int = in_dimension * latent_factor
+latent_dim: int = sae_state_dict["lin_encoder.weight"].shape[0]
 sae = SparseAE(
     input_dim=in_dimension,
-    latent_dim_factor=latent_factor,
+    latent_dim=latent_dim,
     activation=TopK(k=TOP_K),
 )
 sae.load_state_dict(sae_state_dict)
@@ -323,13 +322,14 @@ for epoch in v.wrap_epoch_iterator(range(NUM_EPOCHS)):
         ) as (fig, ax):
             ax.set_ylabel("CE Loss")
             fig.savefig(LEARNING_CURVES_PATH, dpi=300)
-            msg_id = send_learning_curves_to_telegram(
-                image_path=LEARNING_CURVES_PATH,
-                tg_token=TG_TOKEN,
-                tg_chat_id=TG_CHAT_ID,
-                caption="SAE Concepts Classifier intermediate curves",
-                msg_id=msg_id,
-            )
+            if TG_TOKEN is not None and TG_CHAT_ID is not None:
+                msg_id = send_learning_curves_to_telegram(
+                    image_path=LEARNING_CURVES_PATH,
+                    tg_token=TG_TOKEN,
+                    tg_chat_id=TG_CHAT_ID,
+                    caption="SAE Concepts Classifier intermediate curves",
+                    msg_id=msg_id,
+                )
     v.on_epoch_end(epoch, train_loss=epoch_loss, val_loss=val_loss)
 
 v.on_train_end()
@@ -349,11 +349,12 @@ with learning_curves_plot(
 ) as (fig, ax):
     ax.set_ylabel("CE Loss")
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
-    msg_id = send_learning_curves_to_telegram(
-        image_path=LEARNING_CURVES_PATH,
-        tg_token=TG_TOKEN,
-        tg_chat_id=TG_CHAT_ID,
-        caption="SAE Concepts Classifier final curves",
-        msg_id=msg_id,
-    )
+    if TG_TOKEN is not None and TG_CHAT_ID is not None:
+        msg_id = send_learning_curves_to_telegram(
+            image_path=LEARNING_CURVES_PATH,
+            tg_token=TG_TOKEN,
+            tg_chat_id=TG_CHAT_ID,
+            caption="SAE Concepts Classifier final curves",
+            msg_id=msg_id,
+        )
     plt.show()
