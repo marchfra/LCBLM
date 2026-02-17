@@ -15,7 +15,7 @@ dependencies = [
     "torch; sys_platform != 'darwin' or platform_machine == 'arm64'",
     "matplotlib>=3.10.7",
     "trainvox @ git+http://github.com/marchfra/trainvox",
-    "transformers==5.0.0",
+    "transformers==5.1.0",
     "python-dotenv>=1.2.1",
     "better-kaggle-secrets @ git+https://github.com/marchfra/better-kaggle-secrets",
     "datasets>=4.4.1",
