@@ -69,45 +69,45 @@ def loss_top_k(
     return recon_loss + alpha_aux * aux_loss
 
 
-def bernoulli_kl_loss(logits: Tensor, alpha: float) -> Tensor:
+def bernoulli_kl_loss(logits: Tensor, target_p: float) -> Tensor:
     """Compute KL divergence between concept activations and target Bernoulli.
 
     This loss encourages concept activations to match a target sparsity level by
     measuring the divergence between the empirical Bernoulli distribution (estimated
-    from batch statistics) and a target Bernoulli(alpha) distribution. Commonly used for
-    enforcing sparsity in concept-based models or sparse autoencoders.
+    from batch statistics) and a target Bernoulli(target_p) distribution. Commonly used
+    for enforcing sparsity in concept-based models or sparse autoencoders.
 
     The KL divergence for Bernoulli distributions is:
         KL(p || q) = (1 - p) * log((1 - p) / (1 - q)) + p * log(p / q)
 
     where p is the empirical probability (averaged sigmoid of logits over the batch)
-    and q is the target probability alpha.
+    and q is the target probability target_p.
 
     Args:
         logits: Concept logits of shape (batch_size, n_concepts) or (batch_size,
             n_concepts, 1). Each entry represents the unnormalized activation/alignment
             for a concept.
-        alpha: Target probability parameter for the Bernoulli distribution. Must be in
-            the range (0, 1) exclusive.
+        target_p: Target probability parameter for the Bernoulli distribution. Must be
+            in the range (0, 1) exclusive.
 
     Returns:
         Tensor: Scalar KL divergence loss, normalized by sqrt(n_concepts).
 
     Raises:
-        ValueError: If alpha is not in the range (0, 1) exclusive.
+        ValueError: If target_p is not in the range (0, 1) exclusive.
         ValueError: If logits tensor has less than 2 dimensions.
 
     Examples:
         >>> # Encourage 5% concept activation (sparse)
         >>> logits = torch.randn(32, 100)  # 32 samples, 100 concepts
-        >>> loss = bernoulli_kl_loss(logits, alpha=0.05)
+        >>> loss = bernoulli_kl_loss(logits, target_p=0.05)
         >>>
         >>> # Encourage balanced activation
-        >>> loss = bernoulli_kl_loss(logits, alpha=0.5)
+        >>> loss = bernoulli_kl_loss(logits, target_p=0.5)
 
     Note:
         - The loss is normalized by sqrt(n_concepts) to make it scale-invariant
-        - Lower alpha values encourage sparser concept activations
+        - Lower target_p values encourage sparser concept activations
 
     Warning:
         The batch dimension (dim=0) is averaged over to compute empirical probabilities.
@@ -115,8 +115,8 @@ def bernoulli_kl_loss(logits: Tensor, alpha: float) -> Tensor:
         >=16).
 
     """
-    if not (0 < alpha < 1):
-        msg = f"alpha must be in (0, 1) exclusive, got {alpha}"
+    if not (0 < target_p < 1):
+        msg = f"target_p must be in (0, 1) exclusive, got {target_p}"
         raise ValueError(msg)
 
     if logits.dim() < 2:  # noqa: PLR2004
@@ -129,13 +129,13 @@ def bernoulli_kl_loss(logits: Tensor, alpha: float) -> Tensor:
     n_concepts = logits.shape[1]
 
     # Average over batch (dim=0) to get per-concept activation probability
-    pi = torch.sigmoid(logits).mean(dim=0)  # shape: (n_concepts,) or (n_concepts, 1)
+    p = torch.sigmoid(logits).mean(dim=0)  # shape: (n_concepts,) or (n_concepts, 1)
 
-    # KL divergence formula: KL(pi || alpha) = (1-pi)*log((1-pi)/(1-alpha)) +
-    # pi*log(pi/alpha)
-    first_term = (1 - pi) * torch.log(clamp_positive(1 - pi) / (1 - alpha))
-    second_term = pi * torch.log(clamp_positive(pi) / alpha)
-
+    # NOTE: This is actually the KL(q || p), where q is the approximating distribution
+    # and p is the target distribution. This is a bit weird, since usually we do
+    # KL(p || q)
+    first_term = (1 - p) * torch.log(clamp_positive(1 - p) / (1 - target_p))
+    second_term = p * torch.log(clamp_positive(p) / target_p)
     kl_div = (first_term + second_term).sum()
 
     # This makes the loss magnitude comparable across models with different concept
