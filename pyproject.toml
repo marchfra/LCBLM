@@ -12,16 +12,17 @@ dependencies = [
     "numpy<2; sys_platform == 'darwin' and platform_machine != 'arm64'",
     "numpy; sys_platform != 'darwin' or platform_machine == 'arm64'",
     "torch==2.2.2; sys_platform == 'darwin' and platform_machine != 'arm64'",
-    "torch; sys_platform != 'darwin' or platform_machine == 'arm64'",
-    "matplotlib>=3.10.7",
+    "torch==2.10.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "matplotlib==3.10.8",
     "trainvox @ git+http://github.com/marchfra/trainvox",
     "transformers==5.1.0",
-    "python-dotenv>=1.2.1",
+    "python-dotenv==1.2.1",
     "better-kaggle-secrets @ git+https://github.com/marchfra/better-kaggle-secrets",
-    "datasets>=4.4.1",
+    "datasets==4.5.0",
     "pydantic>=2.12.5",
-    "evaluate>=0.4.6",
+    "evaluate==0.4.6",
     "geom-median>=0.1.0",
+    "huggingface-hub==1.4.1",
 ]
 
 [dependency-groups]
