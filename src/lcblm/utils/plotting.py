@@ -262,7 +262,7 @@ def _highlight_best_epoch_with_tick(
 
 
 def _highlight_best_epoch_with_arrow(
-    fig: Figure,
+    fig: Figure,  # noqa: ARG001
     ax: Axes,
     best_epoch: int,
     training_losses: list[float],
