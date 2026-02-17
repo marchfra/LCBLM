@@ -191,7 +191,7 @@ LEARNING_CURVES_PATH = OUTPUT_PATH / "learning_curves.png"
 with learning_curves_plot(
     epoch_losses,
     val_losses,
-    title="SAE Learning Curves",
+    title="TopK SAE Learning Curves",
     best_epoch=best_epoch,
 ) as (fig, _):
     fig.savefig(LEARNING_CURVES_PATH, dpi=300)
@@ -200,20 +200,19 @@ with learning_curves_plot(
             LEARNING_CURVES_PATH,
             tg_token=TG_TOKEN,
             tg_chat_id=TG_CHAT_ID,
-            caption="Final SAE learning curves",
+            caption="Final TopK SAE learning curves",
         )
 
 with learning_curves_plot(
     batch_losses,
-    title="Training Loss Over Batches",
+    title="TopK SAE Training Loss Over Batches",
 ) as (fig, ax):
     ax.set_xlabel("Batch")
-    ax.set_ylabel("CE Loss")
     fig.savefig(OUTPUT_PATH / "training_loss_over_batches.png", dpi=300)
     if TG_TOKEN is not None and TG_CHAT_ID is not None:
         send_learning_curves_to_telegram(
             OUTPUT_PATH / "training_loss_over_batches.png",
             tg_token=TG_TOKEN,
             tg_chat_id=TG_CHAT_ID,
-            caption="SAE training loss over batches",
+            caption="TopK SAE training loss over batches",
         )
