@@ -130,7 +130,10 @@ EOS_TOKEN_ID: int = tokenizer.eos_token_id  # pyright: ignore[reportAssignmentTy
 # #### 1.2 - Create dataset
 
 # %%
-datasets = {split: SAEDataset(input_data=data[split]["embeddings"]) for split in SPLITS}
+datasets = {
+    split: SAEDataset(input_data=data[split]["embeddings"].to(dtype=torch.float32))
+    for split in SPLITS
+}
 
 # %% [markdown]
 # ## 3 - Train SAE
