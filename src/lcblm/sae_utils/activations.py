@@ -214,6 +214,16 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
     return y_hard + y_soft - y_soft.detach()
 
 
+class GumbelSigmoid(Module):
+    def __init__(self, tau: float = 1.0, *, hard: bool = False) -> None:
+        super().__init__()
+        self.tau = tau
+        self.hard = hard
+
+    def forward(self, x: Tensor) -> Tensor:
+        return gumbel_sigmoid(x, tau=self.tau, hard=self.hard)
+
+
 def bernoulli_hard_sample(logit_p: Tensor) -> Tensor:
     """Hard Bernoulli samples from logits (deterministic, for inference).
 
