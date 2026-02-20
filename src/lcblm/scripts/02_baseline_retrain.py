@@ -104,7 +104,7 @@ if HF_TOKEN is not None:
 # #### Define output path
 
 # %%
-OUTPUT_PATH = Path("retrained_classifier_head")
+OUTPUT_PATH = Path("clf_retrained")
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]

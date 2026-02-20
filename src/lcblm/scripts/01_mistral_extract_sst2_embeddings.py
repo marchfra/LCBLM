@@ -90,7 +90,7 @@ if HF_TOKEN is not None:
 # #### Define output path
 
 # %%
-OUTPUT_PATH = Path("sst2_mistral_embeddings")
+OUTPUT_PATH = Path("sst2_embeddings_mistral")
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]

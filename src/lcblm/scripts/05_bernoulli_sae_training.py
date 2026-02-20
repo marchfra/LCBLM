@@ -104,7 +104,7 @@ if HF_TOKEN is not None:
 # #### Define output path
 
 # %%
-OUTPUT_PATH = Path("bernoulli_sae")
+OUTPUT_PATH = Path("sae_bernoulli")
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]

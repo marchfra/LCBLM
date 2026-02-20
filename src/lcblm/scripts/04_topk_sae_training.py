@@ -96,7 +96,7 @@ if HF_TOKEN is not None:
 # #### Define output path
 
 # %%
-OUTPUT_PATH = Path("topk_sae")
+OUTPUT_PATH = Path("sae_topk")
 OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
