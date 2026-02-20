@@ -166,18 +166,18 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
         gradients flowing through the soft relaxation (STE).
 
     Raises:
-        ValueError: if temp isn't positive.
+        ValueError: if tau isn't positive.
 
     Examples:
         >>> # Soft samples during training
         >>> logits = torch.randn(5)  # alignment scores or learned logits
-        >>> soft_samples = gumbel_sigmoid(logits, temp=0.5)
+        >>> soft_samples = gumbel_sigmoid(logits, tau=0.5)
         >>>
         >>> # Hard samples with gradients (Straight-Through Estimator)
-        >>> hard_samples = gumbel_sigmoid(logits, temp=0.5, hard=True)
+        >>> hard_samples = gumbel_sigmoid(logits, tau=0.5, hard=True)
         >>>
         >>> # Common pattern: soft during training, hard at inference
-        >>> samples = gumbel_sigmoid(logits, temp=0.5, hard=not model.training)
+        >>> samples = gumbel_sigmoid(logits, tau=0.5, hard=not model.training)
 
     Note:
         This implements the reparameterization trick for Bernoulli distributions.
@@ -197,7 +197,7 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
 
     """
     if tau <= 0:
-        msg = "temp must be strictly positive"
+        msg = "tau must be strictly positive"
         raise ValueError(msg)
 
     u = torch.rand_like(logit_p)
