@@ -3,7 +3,7 @@ from typing import overload
 import torch
 from geom_median.torch import compute_geometric_median
 from torch import Tensor
-from torch.utils.data import Dataset, Subset
+from torch.utils.data import Dataset
 
 
 class SAEDataset(Dataset[Tensor]):
@@ -47,11 +47,11 @@ class SAEDataset(Dataset[Tensor]):
         raise ValueError(msg)
 
 
-def compute_tied_bias(dataset: SAEDataset, sample_every: int = 15) -> Tensor:
+def compute_tied_bias(data: Tensor, sample_every: int = 15) -> Tensor:
     """Init a tied bias tensor using the geometric median of a subset of the dataset.
 
     Args:
-        dataset: The training dataset containing input tensors.
+        data: The training dataset.
         sample_every: Interval for sampling the dataset to compute the geometric median.
             Only every `sample_every`-th sample is used to reduce memory usage.
 
@@ -59,7 +59,7 @@ def compute_tied_bias(dataset: SAEDataset, sample_every: int = 15) -> Tensor:
         The geometric median tensor.
 
     """
-    subset = Subset(dataset, indices=range(0, len(dataset), sample_every))
-    last_dim = subset[:].shape[-1]
-    geom_med: Tensor = compute_geometric_median(subset[:].reshape(-1, last_dim)).median
-    return geom_med.to(dataset.input_data.dtype)
+    data = data[::sample_every]
+    last_dim = data.shape[-1]
+    geom_med: Tensor = compute_geometric_median(data.reshape(-1, last_dim)).median
+    return geom_med.to(data.dtype)
