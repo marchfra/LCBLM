@@ -1,0 +1,18 @@
+dataset = "mnist"
+n_samples = 5000
+
+n_concepts_list = [5, 10, 20, 50] #, 100]
+embedding_size = 4
+
+epochs = 1000
+lr = 1e-4
+batch_size = 512
+
+sparsity_mode = "kl" # "l1" or "kl"
+lambda_l1 = 1e-2     # used when sparsity_mode = "l1"
+lambda_kl = 5e-3     # used when sparsity_mode = "kl"
+target_p = 0.10      # used when sparsity_mode = "kl"
+
+top_k_examples = 5
+max_concepts_in_dict = 20
+seed = 0

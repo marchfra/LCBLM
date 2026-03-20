@@ -232,3 +232,6 @@ tags
 
 # Jupytext
 notebooks/
+
+# Experiment outputs
+experiment_outputs/

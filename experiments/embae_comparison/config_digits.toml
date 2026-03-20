@@ -1,0 +1,12 @@
+dataset = "digits"
+n_samples = -1
+
+n_concepts_list = [5, 10, 20, 30, 50, 100]
+epochs = 2000
+lr = 1e-4
+lambda_l1 = 1e-1
+embedding_size = 8
+batch_size = 128
+top_k_examples = 5
+max_concepts_in_dict = 20
+seed = 0

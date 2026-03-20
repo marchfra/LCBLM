@@ -23,13 +23,15 @@ dependencies = [
     "evaluate==0.4.6",
     "geom-median>=0.1.0",
     "huggingface-hub==1.4.1",
+    "scikit-learn>=1.8.0",
 ]
+
+[project.scripts]
+embae-exp = "experiments.embae_comparison.exp_cli:main"
 
 [dependency-groups]
 dev = [
     "commitizen>=4.10.0",
-    "ipykernel>=7.1.0",
-    "ipywidgets>=8.1.8",
     "jupytext>=1.18.1",
     "pre-commit>=4.5.0",
     "pytest>=9.0.2",
