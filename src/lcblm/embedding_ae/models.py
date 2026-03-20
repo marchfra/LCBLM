@@ -104,7 +104,7 @@ class EmbeddingAE(nn.Module):
         self._encoder = MLP(self.input_dim, self.num_embeddings * self.embedding_size)
         self._decoder = MLP(self.num_embeddings * self.embedding_size, self.input_dim)
 
-    def _encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         # Shape (batch_size, num_embeddings, embedding_size)
         embeddings = self._encoder(x).reshape(
             -1,
@@ -123,13 +123,18 @@ class EmbeddingAE(nn.Module):
 
         return embeddings, scores, alignments
 
-    def forward(self, x: Tensor) -> Output:
-        embeddings, scores, alignments = self._encode(x)
-
+    def decode(self, embeddings: Tensor, scores: Tensor) -> Tensor:
         # Scale each embedding by its score and flatten all the embeddings for each
         # sample
         flattened_embeddings = (embeddings * scores.unsqueeze(-1)).flatten(start_dim=1)
         recon = self._decoder(flattened_embeddings)
+
+        return recon
+
+    def forward(self, x: Tensor) -> Output:
+        embeddings, scores, alignments = self.encode(x)
+
+        recon = self.decode(embeddings, scores)
 
         return self.Output(
             embeddings=embeddings,
