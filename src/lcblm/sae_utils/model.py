@@ -40,6 +40,7 @@ class SparseAE(Module):
         activation: nn.Module,
         *,
         tied_weights: bool = True,
+        use_tied_bias: bool = True,
     ) -> None:
         """Initialize the SparseAE (Sparse AutoEncoder) module.
 
@@ -49,15 +50,20 @@ class SparseAE(Module):
             activation: Activation function to use in the network.
             tied_weights: Whether to initialize the weights of the decoder to the
                 transpose of the weights of the encoder.
+            use_tied_bias: Whether to use the tied bias in the AutoEncoder.
 
         """
         super().__init__()
 
         self.input_dim = input_dim
         self.latent_dim = latent_dim
+        self.use_tied_bias = use_tied_bias
         self.eps = 1e-7
 
-        self.tied_bias = nn.Parameter(torch.zeros(self.input_dim))
+        # See https://transformer-circuits.pub/2023/monosemantic-features/index.html
+        if not self.use_tied_bias:
+            self.tied_bias = torch.zeros(self.input_dim)
+
         self.normalization = LayerNorm(self.eps)
         self.lin_encoder = nn.Linear(
             in_features=self.input_dim,
@@ -86,14 +92,18 @@ class SparseAE(Module):
             tied_bias: Tensor to initialize the tied bias.
 
         """
-        if tied_bias.shape != self.tied_bias.shape:
+        if not self.use_tied_bias:
+            print("Warning: model not set up to use tied bias")
+            return
+
+        if tied_bias.shape != (self.input_dim,):
             msg = (
-                f"tied_bias must have shape {self.tied_bias.shape}, "
+                f"tied_bias must have shape {(self.input_dim,)}, "
                 f"but got {tied_bias.shape}",
             )
             raise ValueError(msg)
 
-        self.tied_bias.data = tied_bias.to(self.device)
+        self.tied_bias = nn.Parameter(tied_bias.to(self.device))
 
     def encode_pre_activation(self, x: Tensor) -> Tensor:
         """Compute the pre-activation output of the encoder.
