@@ -12,7 +12,14 @@ class TopK(Module):
         Args:
             k: The number of top activations to keep.
 
+        Raises:
+            ValueError: if k <= 0.
+
         """
+        if k <= 0:
+            msg = f"k should be greater than zero, got {k}"
+            raise ValueError(msg)
+
         super().__init__()
         self.k = k
 
