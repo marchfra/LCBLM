@@ -50,7 +50,7 @@ class EmbeddingAE(nn.Module):
         decoder: Decoder network reconstructing input from scores.
 
     Note: The responsibility for making the autoencoder sparse lies solely with the
-        scoring_module.
+        scoring_module, or with external losses.
 
     """
 
@@ -78,7 +78,7 @@ class EmbeddingAE(nn.Module):
                 in a Tensor and returns a Tensor. Defaults to nn.ReLU().
 
         Raises:
-            TypeError: if scoring_module is not a subclass of torhc.nn.Module.
+            TypeError: if scoring_module is not a subclass of torch.nn.Module.
 
         """
         if not isinstance(scoring_module, nn.Module):
@@ -105,11 +105,9 @@ class EmbeddingAE(nn.Module):
         self._decoder = MLP(self.num_embeddings * self.embedding_size, self.input_dim)
 
     def _encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        batch_size = x.shape[0]
-
         # Shape (batch_size, num_embeddings, embedding_size)
-        embeddings = self._encoder.forward(x).reshape(
-            batch_size,
+        embeddings = self._encoder(x).reshape(
+            -1,
             self.num_embeddings,
             self.embedding_size,
         )
@@ -119,6 +117,7 @@ class EmbeddingAE(nn.Module):
         # sample in the batch. The string is an equation that uses Einstein index
         # notation, i.e., sum_{e=0}^{emb_size - 1} embeds_{bne} * prots_{ne} = aligns_{bn}  # noqa: E501
         alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
+
         # Shape (batch_size, num_embeddings)
         scores: Tensor = self.scoring_module(alignments)
 
