@@ -26,22 +26,22 @@ class SAEDataset(Dataset[Tensor]):
         return self.input_data.shape[-1]
 
     @overload
-    def __getitem__(self, idx: int) -> Tensor: ...
+    def __getitem__(self, index: int) -> Tensor: ...
     @overload
-    def __getitem__(self, idx: list[int]) -> Tensor: ...
+    def __getitem__(self, index: list[int]) -> Tensor: ...
     @overload
-    def __getitem__(self, idx: slice) -> Tensor: ...
+    def __getitem__(self, index: slice) -> Tensor: ...
     @overload
-    def __getitem__(self, idx: range) -> Tensor: ...
-    def __getitem__(self, idx):
-        if isinstance(idx, int):
-            return self.input_data[idx]
+    def __getitem__(self, index: range) -> Tensor: ...
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return self.input_data[index]
 
-        if isinstance(idx, (list, range)):
-            return torch.vstack([self[i] for i in idx])
+        if isinstance(index, (list, range)):
+            return torch.vstack([self[i] for i in index])
 
-        if isinstance(idx, slice):
-            return torch.vstack([self[i] for i in range(*idx.indices(len(self)))])
+        if isinstance(index, slice):
+            return torch.vstack([self[i] for i in range(*index.indices(len(self)))])
 
         msg = "Unsupported index type."
         raise ValueError(msg)

@@ -74,18 +74,18 @@ class NextTokenDataset(Dataset[Sentence]):
         return self.embeddings.size(2)
 
     @overload
-    def __getitem__(self, idx: int) -> Sentence: ...
+    def __getitem__(self, index: int) -> Sentence: ...
     @overload
-    def __getitem__(self, idx: list[int]) -> list[Sentence]: ...
+    def __getitem__(self, index: list[int]) -> list[Sentence]: ...
     @overload
-    def __getitem__(self, idx: slice) -> list[Sentence]: ...
+    def __getitem__(self, index: slice) -> list[Sentence]: ...
     @overload
-    def __getitem__(self, idx: range) -> list[Sentence]: ...
-    def __getitem__(self, idx):
-        if isinstance(idx, int):
-            input_ids = self.input_ids[idx]
-            attention_mask = self.attention_mask[idx]
-            embeddings = self.embeddings[idx]
+    def __getitem__(self, index: range) -> list[Sentence]: ...
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            input_ids = self.input_ids[index]
+            attention_mask = self.attention_mask[index]
+            embeddings = self.embeddings[index]
 
             next_token_ids = torch.cat(
                 [input_ids[1:], torch.tensor([self.eos_token_id])],
@@ -105,11 +105,11 @@ class NextTokenDataset(Dataset[Sentence]):
                 next_attention_mask=next_attention_mask,
             )
 
-        if isinstance(idx, (list, range)):
-            return [self[i] for i in idx]
+        if isinstance(index, (list, range)):
+            return [self[i] for i in index]
 
-        if isinstance(idx, slice):
-            return [self[i] for i in range(*idx.indices(len(self)))]
+        if isinstance(index, slice):
+            return [self[i] for i in range(*index.indices(len(self)))]
 
         msg = "Unsupported index type."
         raise ValueError(msg)

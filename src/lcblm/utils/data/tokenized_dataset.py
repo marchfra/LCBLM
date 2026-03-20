@@ -117,38 +117,28 @@ class TokenizedDataset(Dataset[EncodedSentence]):
         return self.input_ids.size(1)
 
     @overload
-    def __getitem__(self, idx: int) -> EncodedSentence: ...
+    def __getitem__(self, index: int) -> EncodedSentence: ...
     @overload
-    def __getitem__(self, idx: list[int]) -> list[EncodedSentence]: ...
+    def __getitem__(self, index: list[int]) -> list[EncodedSentence]: ...
     @overload
-    def __getitem__(self, idx: slice) -> list[EncodedSentence]: ...
-    def __getitem__(self, idx):
-        """Retrieve one or more encoded sentences by index.
-
-        Args:
-            idx: Index or indices to retrieve.
-
-        Returns:
-            The requested encoded sentence(s).
-
-        Raises:
-            ValueError: If the index type is unsupported.
-
-        """
-        if isinstance(idx, int):
-            input_ids = self.input_ids[idx]
-            attention_mask = self.attention_mask[idx]
+    def __getitem__(self, index: slice) -> list[EncodedSentence]: ...
+    @overload
+    def __getitem__(self, index: range) -> list[EncodedSentence]: ...
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            input_ids = self.input_ids[index]
+            attention_mask = self.attention_mask[index]
 
             return EncodedSentence(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
             )
 
-        if isinstance(idx, list):
-            return [self[i] for i in idx]
+        if isinstance(index, (list, range)):
+            return [self[i] for i in index]
 
-        if isinstance(idx, slice):
-            return [self[i] for i in range(*idx.indices(len(self)))]
+        if isinstance(index, slice):
+            return [self[i] for i in range(*index.indices(len(self)))]
 
         msg = "Unsupported index type."
         raise ValueError(msg)
