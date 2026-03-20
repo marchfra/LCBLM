@@ -38,7 +38,6 @@ class SparseAE(Module):
         input_dim: int,
         latent_dim: int,
         activation: nn.Module,
-        epsilon: float = 1e-7,
         *,
         tied_weights: bool = True,
     ) -> None:
@@ -48,7 +47,6 @@ class SparseAE(Module):
             input_dim: Dimension of the input.
             latent_dim: Size of latent dimension.
             activation: Activation function to use in the network.
-            epsilon: Small value for numerical stability in normalization.
             tied_weights: Whether to initialize the weights of the decoder to the
                 transpose of the weights of the encoder.
 
@@ -57,10 +55,10 @@ class SparseAE(Module):
 
         self.input_dim = input_dim
         self.latent_dim = latent_dim
-        self.eps = epsilon
+        self.eps = 1e-7
 
         self.tied_bias = nn.Parameter(torch.zeros(self.input_dim))
-        self.normalization = LayerNorm(eps=epsilon)
+        self.normalization = LayerNorm(self.eps)
         self.lin_encoder = nn.Linear(
             in_features=self.input_dim,
             out_features=self.latent_dim,
