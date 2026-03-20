@@ -202,7 +202,7 @@ def _initialize_sae(
         latent_dim=train_set.num_features * config.latent_dim_factor,
         activation=activation,
     )
-    sae.init_tied_bias(compute_tied_bias(train_set))
+    sae.init_tied_bias(compute_tied_bias(train_set.input_data))
     sae.to(config.device)
     return sae
 
