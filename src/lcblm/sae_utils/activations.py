@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 import torch
 from torch import Tensor
 from torch.nn import Module
@@ -222,12 +224,17 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
 
 
 class GumbelSigmoid(Module):
+    Output: TypeAlias = Tensor
+
     def __init__(self, tau: float = 1.0) -> None:
         super().__init__()
         self.tau = tau
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Output:
         return gumbel_sigmoid(x, tau=self.tau, hard=self.training)
+
+    def __call__(self, x: Tensor) -> Output:
+        return super().__call__(x)
 
 
 def bernoulli_hard_sample(logit_p: Tensor) -> Tensor:

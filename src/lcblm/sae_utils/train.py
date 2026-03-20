@@ -9,7 +9,7 @@ from .activations import TopK, update_dead_latent_counts
 from .config import Config
 from .dataset import SAEDataset, compute_tied_bias
 from .losses import loss_k_aux, loss_recon_fn, loss_top_k
-from .model import SAEOutput, SparseAE
+from .model import SparseAE
 
 
 class _SAETrainingOutput(NamedTuple):
@@ -209,7 +209,7 @@ def _initialize_sae(
 
 def _compute_batch_loss(
     sae: SparseAE,
-    sae_output: SAEOutput,
+    sae_output: SparseAE.Output,
     x: torch.Tensor,
     dead_latents_mask: torch.Tensor,
     config: Config,

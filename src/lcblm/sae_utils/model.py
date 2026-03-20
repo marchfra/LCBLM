@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import NamedTuple
 
 import torch
@@ -5,23 +7,6 @@ from torch import Tensor, nn
 from torch.nn import Module
 
 from .normalization import LayerNorm, NormParams
-
-
-class SAEOutput(NamedTuple):
-    """A NamedTuple that stores the results of a Sparse Autoencoder (SAE) forward pass.
-
-    Attributes:
-        latents: The encoded latent representations produced by the SAE.
-        latents_pre_activation: The latent representations before activation is applied.
-        reconstructed_input: The input reconstructed by the SAE decoder.
-        norm: Parameters used for input normalization.
-
-    """
-
-    latents: Tensor
-    latents_pre_activation: Tensor
-    recon: Tensor
-    norm: NormParams
 
 
 class SparseAE(Module):
@@ -32,6 +17,12 @@ class SparseAE(Module):
     using a top-k activation function.
 
     """
+
+    class Output(NamedTuple):
+        latents: Tensor
+        latents_pre_activation: Tensor
+        recon: Tensor
+        norm: NormParams
 
     def __init__(
         self,
@@ -146,7 +137,7 @@ class SparseAE(Module):
         x_rec = self.lin_decoder(z) + self.tied_bias
         return x_rec * (norm.std + self.eps) + norm.mu
 
-    def forward(self, x: Tensor) -> SAEOutput:
+    def forward(self, x: Tensor) -> Output:
         """Perform a forward pass through the Sparse AutoEncoder (SAE).
 
         This method normalizes the input, encodes it to a latent representation,
@@ -169,9 +160,12 @@ class SparseAE(Module):
         z = self.activation(z_pre_activation)
         x_reconstructed = self.decode(z, norm)
 
-        return SAEOutput(
+        return self.Output(
             latents=z,
             latents_pre_activation=z_pre_activation,
             recon=x_reconstructed,
             norm=norm,
         )
+
+    def __call__(self, x: Tensor) -> Output:
+        return super().__call__(x)
