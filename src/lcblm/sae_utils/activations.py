@@ -222,13 +222,12 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
 
 
 class GumbelSigmoid(Module):
-    def __init__(self, tau: float = 1.0, *, hard: bool = False) -> None:
+    def __init__(self, tau: float = 1.0) -> None:
         super().__init__()
         self.tau = tau
-        self.hard = hard
 
     def forward(self, x: Tensor) -> Tensor:
-        return gumbel_sigmoid(x, tau=self.tau, hard=self.hard)
+        return gumbel_sigmoid(x, tau=self.tau, hard=self.training)
 
 
 def bernoulli_hard_sample(logit_p: Tensor) -> Tensor:
