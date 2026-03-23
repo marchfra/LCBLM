@@ -6,23 +6,14 @@ import torch
 from torch import Tensor, nn
 from torch.nn import Module
 
-from .normalization import LayerNorm, NormParams
-
 
 class SparseAE(Module):
-    """SparseAE is a PyTorch Module implementing a Sparse AutoEncoder (SAE).
-
-    The SAE consists of an encoder and a decoder with tied weights, and includes
-    preprocessing steps such as normalization. The latent space is enforced to be sparse
-    using a top-k activation function.
-
-    """
+    """SparseAE is a PyTorch Module implementing a Sparse AutoEncoder (SAE)."""
 
     class Output(NamedTuple):
         latents: Tensor
         latents_pre_activation: Tensor
         recon: Tensor
-        norm: NormParams
 
     def __init__(
         self,
@@ -55,7 +46,6 @@ class SparseAE(Module):
         if not self.use_tied_bias:
             self.tied_bias = torch.zeros(self.input_dim)
 
-        self.normalization = LayerNorm(self.eps)
         self.lin_encoder = nn.Linear(
             in_features=self.input_dim,
             out_features=self.latent_dim,
@@ -97,17 +87,6 @@ class SparseAE(Module):
         self.tied_bias = nn.Parameter(tied_bias.to(self.device))
 
     def encode_pre_activation(self, x: Tensor) -> Tensor:
-        """Compute the pre-activation output of the encoder.
-
-        Before encoding, the tied bias is subtracted from the input tensor.
-
-        Args:
-            x: Input tensor to the encoder.
-
-        Returns:
-            The encoder's pre-activation output.
-
-        """
         try:
             _ = self.tied_bias
         except AttributeError as e:
@@ -118,53 +97,46 @@ class SparseAE(Module):
         z = self.lin_encoder(x)
         return z
 
-    def decode(self, z: Tensor, norm: NormParams) -> Tensor:
+    def decode(self, z: Tensor) -> Tensor:
         """Decode the latent representation `z` into the reconstructed input tensor.
 
         The decoding process involves:
         1. Passing the latent representation `z` through the decoder layer.
         2. Adding the tied bias to the decoded output.
-        3. Denormalizing the result using the provided normalization parameters.
 
         Args:
             z: Latent representation tensor to be decoded.
-            norm: NamedTuple containing normalization parameters.
 
         Returns:
-            The reconstructed input tensor after decoding and denormalization.
+            The reconstructed input tensor after decoding.
 
         """
-        x_rec = self.lin_decoder(z) + self.tied_bias
-        return x_rec * (norm.std + self.eps) + norm.mu
+        return self.lin_decoder(z) + self.tied_bias
 
     def forward(self, x: Tensor) -> Output:
         """Perform a forward pass through the Sparse AutoEncoder (SAE).
 
-        This method normalizes the input, encodes it to a latent representation,
-        applies the activation function, and reconstructs the input from the latent
-        representation.
+        This method encodes the input to a latent representation, applies the activation
+        function, and reconstructs the input from the latent representation.
 
         Args:
             x: Input tensor to be processed.
 
         Returns:
-            A NamedTuple (`latents`, `latents_pre_activation`, `recon`, `norm`), where
-            `latents` is the activated latent representation, `latents_pre_activation`
-            is the latent representation before activation, `recon` is the reconstructed
-            input tensor, and `norm` is the normalization parameters used during
-            processing.
+            A NamedTuple (`latents`, `latents_pre_activation`, `recon`), where `latents`
+            is the activated latent representation, `latents_pre_activation` is the
+            latent representation before activation, and `recon` is the reconstructed
+            input tensor.
 
         """
-        x, norm = self.normalization(x)
         z_pre_activation = self.encode_pre_activation(x)
         z = self.activation(z_pre_activation)
-        x_reconstructed = self.decode(z, norm)
+        x_reconstructed = self.decode(z)
 
         return self.Output(
             latents=z,
             latents_pre_activation=z_pre_activation,
             recon=x_reconstructed,
-            norm=norm,
         )
 
     def __call__(self, x: Tensor) -> Output:
