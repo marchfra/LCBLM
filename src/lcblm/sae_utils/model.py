@@ -124,7 +124,7 @@ class SparseAE(Module):
             The reconstructed input tensor after decoding.
 
         """
-        return self.lin_decoder(z) + self.tied_bias
+        return self._decoder(z) + self.tied_bias
 
     def forward(self, x: Tensor) -> Output:
         """Perform a forward pass through the Sparse AutoEncoder (SAE).
