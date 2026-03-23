@@ -23,6 +23,7 @@ Requires Python 3.11+ for tomllib (stdlib). On older versions install tomli:
 from __future__ import annotations
 
 import argparse
+import pickle
 import shutil
 import sys
 
@@ -83,6 +84,10 @@ def _checkpoint_path(out_dir: Path, model_name: str, n_concepts: int) -> Path:
     ckpt_dir = out_dir / "checkpoints"
     ckpt_dir.mkdir(exist_ok=True)
     return ckpt_dir / f"{model_name.lower()}_{n_concepts:03d}.pt"
+
+
+def _scaler_path(out_dir: Path) -> Path:
+    return out_dir / "scaler.pkl"
 
 
 def _build_model(
@@ -155,6 +160,9 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     # Persist results and checkpoints
     save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
+    with _scaler_path(out_dir).open("wb") as f:
+        pickle.dump(scaler, f)
+    print(f"Saved scaler to {_scaler_path(out_dir).name}")
     for model_name, n_concepts, model in trained_models:
         ckpt_path = _checkpoint_path(out_dir, model_name, n_concepts)
         torch.save(model.state_dict(), ckpt_path)
@@ -212,7 +220,16 @@ def cmd_plot(args: argparse.Namespace) -> None:
 
     print("\nLoading data and checkpoints for concept dictionaries...")
     _, load_data = DATASET_REGISTRY[ds_cfg.name]
-    X_train, _X_test, _y_train, _y_test, scaler = load_data(run_cfg.n_samples)
+    X_train, _X_test, _y_train, _y_test, fresh_scaler = load_data(run_cfg.n_samples)
+    scaler_path = _scaler_path(out_dir)
+    if scaler_path.exists():
+        with scaler_path.open("rb") as f:
+            scaler = pickle.load(f)  # noqa: S301
+    else:
+        print(
+            "Warning: scaler not found, refitting from data (results may differ slightly).",  # noqa: E501
+        )
+        scaler = fresh_scaler
 
     for result in results:
         model_name = result.model_name
