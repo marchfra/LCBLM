@@ -16,6 +16,7 @@ from tqdm.auto import trange
 
 from lcblm.embedding_ae import EmbeddingAE
 from lcblm.sae_utils import SparseAE
+from lcblm.sae_utils.activations import GumbelSigmoid
 from lcblm.sae_utils.dataset import compute_tied_bias
 from lcblm.sae_utils.losses import bernoulli_kl_loss
 
@@ -23,6 +24,29 @@ from .exp_metrics import l0_embedding, l0_sparse
 
 if TYPE_CHECKING:
     from .exp_config import DatasetConfig, RunConfig
+
+
+def build_sparse_ae(n_concepts: int, cfg: RunConfig, ds_cfg: DatasetConfig) -> SparseAE:
+    model = SparseAE(
+        input_dim=ds_cfg.input_dim,
+        latent_dim=n_concepts,
+        activation=nn.ReLU(),
+    )
+    model.init_tied_bias(torch.empty(model.input_dim))
+    return model.to(cfg.device)
+
+
+def build_embedding_ae(
+    n_concepts: int,
+    cfg: RunConfig,
+    ds_cfg: DatasetConfig,
+) -> EmbeddingAE:
+    return EmbeddingAE(
+        input_dim=ds_cfg.input_dim,
+        num_embeddings=n_concepts,
+        embedding_size=cfg.embedding_size,
+        scoring_module=GumbelSigmoid(tau=2 / 3),
+    ).to(cfg.device)
 
 
 @dataclass
@@ -43,7 +67,7 @@ class RunResult:
     n_concepts: int
     train_recon: list[float] = field(default_factory=list)
     test_recon: list[float] = field(default_factory=list)
-    best_l0: float = 0.0
+    best_l0: float = float("inf")
     best_test_recon: float = float("inf")
 
 
@@ -71,11 +95,7 @@ def train_sparse_ae(
         The best-checkpoint model and the run's recorded metrics.
 
     """
-    model = SparseAE(
-        input_dim=ds_cfg.input_dim,
-        latent_dim=n_concepts,
-        activation=nn.ReLU(),
-    ).to(cfg.device)
+    model = build_sparse_ae(n_concepts, cfg, ds_cfg)
 
     geom_median = compute_tied_bias(X_train, 1)
     model.init_tied_bias(geom_median)
@@ -95,11 +115,14 @@ def train_sparse_ae(
             recon_loss = F.mse_loss(out.recon, xb)
             if cfg.sparsity_mode == "l1":
                 sparsity_loss = cfg.lambda_l1 * out.latents.abs().mean()
-            else:
+            elif cfg.sparsity_mode == "kl":
                 sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss(
                     out.latents_pre_activation,
                     cfg.target_p,
                 )
+            else:
+                msg = "Invalid sparsity mode"
+                raise ValueError(msg)
             loss = recon_loss + sparsity_loss
             optimizer.zero_grad()
             loss.backward()
@@ -109,7 +132,7 @@ def train_sparse_ae(
         result.train_recon.append(epoch_recon / len(loader))
 
         model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             out_test = model(X_test_d)
             test_recon = F.mse_loss(out_test.recon, X_test_d).item()
         result.test_recon.append(test_recon)
@@ -120,7 +143,7 @@ def train_sparse_ae(
 
     model.load_state_dict(best_state)
     model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         out_test = model(X_test_d)
         result.best_l0 = l0_sparse(out_test.latents)
 
@@ -147,12 +170,7 @@ def train_embedding_ae(
         The best-checkpoint model and the run's recorded metrics.
 
     """
-    model = EmbeddingAE(
-        input_dim=ds_cfg.input_dim,
-        num_embeddings=n_concepts,
-        embedding_size=cfg.embedding_size,
-        scoring_module=nn.Sigmoid(),
-    ).to(cfg.device)
+    model = build_embedding_ae(n_concepts, cfg, ds_cfg)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     loader = _make_loader(X_train, cfg.batch_size)
@@ -169,11 +187,14 @@ def train_embedding_ae(
             recon_loss = F.mse_loss(out.recon, xb)
             if cfg.sparsity_mode == "l1":
                 sparsity_loss = cfg.lambda_l1 * out.scores.abs().mean()
-            else:
+            elif cfg.sparsity_mode == "kl":
                 sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss(
                     out.alignments,
                     cfg.target_p,
                 )
+            else:
+                msg = "Invalid sparsity mode"
+                raise ValueError(msg)
             loss = recon_loss + sparsity_loss
             optimizer.zero_grad()
             loss.backward()
@@ -183,7 +204,7 @@ def train_embedding_ae(
         result.train_recon.append(epoch_recon / len(loader))
 
         model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             out_test = model(X_test_d)
             test_recon = F.mse_loss(out_test.recon, X_test_d).item()
         result.test_recon.append(test_recon)
@@ -194,7 +215,7 @@ def train_embedding_ae(
 
     model.load_state_dict(best_state)
     model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         out_test = model(X_test_d)
         result.best_l0 = l0_embedding(out_test.scores)
 

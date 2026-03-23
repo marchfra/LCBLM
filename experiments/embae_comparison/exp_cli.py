@@ -27,7 +27,7 @@ import pickle
 import shutil
 import sys
 
-from lcblm.sae_utils.activations import GumbelSigmoid
+from .exp_training import build_embedding_ae, build_sparse_ae, run_experiment
 
 try:
     import tomllib
@@ -44,15 +44,17 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 
-from lcblm.embedding_ae import EmbeddingAE
-from lcblm.sae_utils import SparseAE
 from lcblm.utils.seed import set_seeds
 
 from .exp_config import DatasetConfig, RunConfig
 from .exp_data import DATASET_REGISTRY
 from .exp_io import load_results, save_results
-from .exp_plotting import plot_concept_dictionary, plot_l0_recon, plot_learning_curves
-from .exp_training import run_experiment
+from .exp_plotting import (
+    plot_concept_ablation,
+    plot_concept_dictionary,
+    plot_l0_recon,
+    plot_learning_curves,
+)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -98,24 +100,9 @@ def _build_model(
 ) -> nn.Module:
     """Reconstruct an untrained model with the correct architecture."""
     if model_name == "SparseAE":
-        # NOTE: using Sigmoid instead of ReLU produces qualitatively similar concept
-        # dictionaries
-        model = SparseAE(
-            input_dim=ds_cfg.input_dim,
-            latent_dim=n_concepts,
-            activation=nn.ReLU(),
-        ).to(run_cfg.device)
-        model.init_tied_bias(torch.empty(model.input_dim))
-        return model
-
+        return build_sparse_ae(n_concepts, run_cfg, ds_cfg)
     if model_name == "EmbeddingAE":
-        return EmbeddingAE(
-            input_dim=ds_cfg.input_dim,
-            num_embeddings=n_concepts,
-            embedding_size=run_cfg.embedding_size,
-            # scoring_module=nn.Sigmoid(),
-            scoring_module=GumbelSigmoid(tau=2 / 3),
-        ).to(run_cfg.device)
+        return build_embedding_ae(n_concepts, run_cfg, ds_cfg)
 
     msg = f"Unknown model name: {model_name!r}"
     raise ValueError(msg)
@@ -182,6 +169,16 @@ def cmd_run(args: argparse.Namespace) -> None:
             ds_cfg,
             out_dir,
         )
+        plot_concept_ablation(
+            model,
+            model_name,
+            n_concepts,
+            X_train,
+            scaler,
+            run_cfg,
+            ds_cfg,
+            out_dir,
+        )
 
     print(f"\nAll done — outputs in {out_dir}")
 
@@ -198,7 +195,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
     plt.style.use(["grid", "science", "notebook", "mylegend"])
 
     print(f"Loaded {len(results)} run(s) from {results_path}")
-    print(f"Dataset: {ds_cfg.name}  λ={run_cfg.lambda_l1}")
+    print(f"Dataset: {ds_cfg.name}")
     print("Generating plots...")
 
     plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
@@ -249,6 +246,16 @@ def cmd_plot(args: argparse.Namespace) -> None:
             torch.load(ckpt_path, map_location=run_cfg.device, weights_only=True),
         )
         plot_concept_dictionary(
+            model,
+            model_name,
+            n_concepts,
+            X_train,
+            scaler,
+            run_cfg,
+            ds_cfg,
+            out_dir,
+        )
+        plot_concept_ablation(
             model,
             model_name,
             n_concepts,
