@@ -64,7 +64,7 @@ class EmbeddingAE(nn.Module):
         input_dim: int,
         num_embeddings: int,
         embedding_size: int,
-        scoring_module: TensorModule | None = None,
+        scoring_module: TensorModule,
     ) -> None:
         """Initialize an Embedding AutoEncoder.
 
@@ -74,7 +74,7 @@ class EmbeddingAE(nn.Module):
             embedding_size: The size of each embedding.
             scoring_module: The Module to convert cosine alignment between embeddings
                 and prototypes to a score. It must implement a forward method that takes
-                in a Tensor and returns a Tensor. Defaults to nn.ReLU().
+                in a Tensor and returns a Tensor.
 
         Raises:
             TypeError: if scoring_module is not a subclass of torch.nn.Module.
@@ -92,11 +92,8 @@ class EmbeddingAE(nn.Module):
         self.input_dim = input_dim
         self.num_embeddings = num_embeddings
         self.embedding_size = embedding_size
-        self.scoring_module = (
-            scoring_module if scoring_module is not None else nn.ReLU()
-        )
+        self.scoring_module = scoring_module
 
-        # NOTE: Explore different initializations
         self.prototypes = nn.Parameter(
             torch.randn(self.num_embeddings, self.embedding_size),
         )
