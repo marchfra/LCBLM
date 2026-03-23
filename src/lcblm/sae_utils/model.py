@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import torch
 from torch import Tensor, nn
 from torch.nn import Module
+
+from lcblm.typing import TypedLinear
+
+if TYPE_CHECKING:
+    from lcblm.typing import TensorModule
 
 
 class SparseAE(Module):
@@ -19,7 +24,7 @@ class SparseAE(Module):
         self,
         input_dim: int,
         latent_dim: int,
-        activation: nn.Module,
+        activation: TensorModule,
         *,
         tied_weights: bool = True,
         use_tied_bias: bool = True,
@@ -35,6 +40,13 @@ class SparseAE(Module):
             use_tied_bias: Whether to use the tied bias in the AutoEncoder.
 
         """
+        if not isinstance(activation, nn.Module):
+            msg = (
+                f"Expected scoring_module to be a torch.nn.Module subclass, "
+                f"got {type(activation)}"
+            )
+            raise TypeError(msg)
+
         super().__init__()
 
         self.input_dim = input_dim
@@ -46,20 +58,20 @@ class SparseAE(Module):
         if not self.use_tied_bias:
             self.tied_bias = torch.zeros(self.input_dim)
 
-        self.lin_encoder = nn.Linear(
+        self._encoder = TypedLinear(
             in_features=self.input_dim,
             out_features=self.latent_dim,
             bias=False,
         )
         self.activation = activation
-        self.lin_decoder = nn.Linear(
+        self._decoder = TypedLinear(
             in_features=self.latent_dim,
             out_features=self.input_dim,
             bias=False,
         )
 
         if tied_weights:
-            self.lin_decoder.weight.data = self.lin_encoder.weight.data.T.clone()
+            self._decoder.weight.data = self._encoder.weight.data.T.clone()
 
     @property
     def device(self) -> torch.device:
@@ -86,7 +98,7 @@ class SparseAE(Module):
 
         self.tied_bias = nn.Parameter(tied_bias.to(self.device))
 
-    def encode_pre_activation(self, x: Tensor) -> Tensor:
+    def encode(self, x: Tensor) -> tuple[Tensor, Tensor]:
         try:
             _ = self.tied_bias
         except AttributeError as e:
@@ -94,8 +106,9 @@ class SparseAE(Module):
             raise AttributeError(msg) from e
 
         x = x - self.tied_bias
-        z = self.lin_encoder(x)
-        return z
+        z_pre_act = self._encoder(x)
+        z = self.activation(z_pre_act)
+        return z_pre_act, z
 
     def decode(self, z: Tensor) -> Tensor:
         """Decode the latent representation `z` into the reconstructed input tensor.
@@ -129,14 +142,13 @@ class SparseAE(Module):
             input tensor.
 
         """
-        z_pre_activation = self.encode_pre_activation(x)
-        z = self.activation(z_pre_activation)
-        x_reconstructed = self.decode(z)
+        z_pre_act, z = self.encode(x)
+        recon = self.decode(z)
 
         return self.Output(
             latents=z,
-            latents_pre_activation=z_pre_activation,
-            recon=x_reconstructed,
+            latents_pre_activation=z_pre_act,
+            recon=recon,
         )
 
     def __call__(self, x: Tensor) -> Output:
