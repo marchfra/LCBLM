@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import NamedTuple, Protocol, TypeAlias
+from typing import TYPE_CHECKING, NamedTuple, TypeAlias
 
 import torch
 from torch import Tensor, nn
+
+if TYPE_CHECKING:
+    from lcblm.typing import TensorModule
 
 
 class MLP(nn.Module):
@@ -26,10 +29,6 @@ class MLP(nn.Module):
 
     def __call__(self, x: Tensor) -> Output:
         return super().__call__(x)
-
-
-class TensorModule(Protocol):
-    def forward(self, x: Tensor, /) -> Tensor: ...
 
 
 class EmbeddingAE(nn.Module):
