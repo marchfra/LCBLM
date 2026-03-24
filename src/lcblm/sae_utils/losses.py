@@ -46,7 +46,7 @@ def loss_k_aux(
 
     e = x - sae_output.recon
     dead_pre_activations = sae_output.latents_pre_activation * dead_latents_mask
-    e_hat = autoencoder.decode(topk_aux(dead_pre_activations), sae_output.norm)
+    e_hat = autoencoder.decode(topk_aux(dead_pre_activations))
     return mse_loss(e, e_hat, reduction="mean").nan_to_num(0)
 
 
