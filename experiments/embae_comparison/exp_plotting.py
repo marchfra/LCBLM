@@ -56,7 +56,7 @@ def _decode_prototype(
             recon = model.decode(prototypes, scores)
         elif model_name == "SparseAE":  # SparseAE
             z = torch.zeros(1, n_concepts, device=device)
-            z[0, concept_idx] = 1.0
+            z[0, concept_idx] = 100.0
             recon = model.decode(z)
         else:
             msg = "Model not supported"
