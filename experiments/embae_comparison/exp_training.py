@@ -19,6 +19,7 @@ from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.activations import GumbelSigmoid
 from lcblm.sae_utils.dataset import compute_tied_bias
 from lcblm.sae_utils.losses import bernoulli_kl_loss
+from lcblm.typing import TypedLinear
 
 from .exp_metrics import l0_embedding, l0_sparse
 
@@ -42,9 +43,20 @@ def build_embedding_ae(
     ds_cfg: DatasetConfig,
 ) -> EmbeddingAE:
     return EmbeddingAE(
-        input_dim=ds_cfg.input_dim,
         num_embeddings=n_concepts,
         embedding_size=cfg.embedding_size,
+        encoder=TypedLinear(ds_cfg.input_dim, cfg.embedding_size * n_concepts),
+        decoder=TypedLinear(cfg.embedding_size * n_concepts, ds_cfg.input_dim),
+        # encoder=MLP(
+        #     ds_cfg.input_dim,
+        #     cfg.embedding_size * n_concepts,
+        #     cfg.embedding_size * n_concepts,
+        # ),
+        # decoder=MLP(
+        #     cfg.embedding_size * n_concepts,
+        #     cfg.embedding_size * n_concepts,
+        #     ds_cfg.input_dim,
+        # ),
         scoring_module=GumbelSigmoid(tau=2 / 3),
     ).to(cfg.device)
 
