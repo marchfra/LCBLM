@@ -14,13 +14,14 @@ class MLP(nn.Module):
 
     Output: TypeAlias = Tensor
 
-    def __init__(self, input_dim: int, output_dim: int) -> None:
+    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int) -> None:
         """Initialize the MultiLayer Perceptron module."""
         super().__init__()
 
         self.linear1 = nn.Linear(input_dim, output_dim)
+        self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.activation = nn.ReLU()
-        self.linear2 = nn.Linear(output_dim, output_dim)
+        self.linear2 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x: Tensor) -> Output:
         x: Tensor = self.linear1(x)
@@ -97,8 +98,17 @@ class EmbeddingAE(nn.Module):
         self.prototypes = nn.Parameter(
             torch.randn(self.num_embeddings, self.embedding_size),
         )
-        self._encoder = MLP(self.input_dim, self.num_embeddings * self.embedding_size)
-        self._decoder = MLP(self.num_embeddings * self.embedding_size, self.input_dim)
+        # TODO: use hidden_dim as a bottleneck, e.g., hidden_dim=32
+        self._encoder = MLP(
+            self.input_dim,
+            self.num_embeddings * self.embedding_size,
+            self.num_embeddings * self.embedding_size,
+        )
+        self._decoder = MLP(
+            self.num_embeddings * self.embedding_size,
+            self.input_dim,
+            self.input_dim,
+        )
 
     def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         # Shape (batch_size, num_embeddings, embedding_size)
@@ -129,7 +139,7 @@ class EmbeddingAE(nn.Module):
 
     def forward(self, x: Tensor) -> Output:
         embeddings, scores, alignments = self.encode(x)
-
+        # TODO: try decoding from prototypes instead of embeddings
         recon = self.decode(embeddings, scores)
 
         return self.Output(
