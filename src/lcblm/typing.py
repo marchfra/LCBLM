@@ -15,6 +15,20 @@ class ShapedTensorModule(TensorModule, Protocol):
 class TypedLinear(nn.Linear):
     Output: TypeAlias = Tensor
 
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        *,
+        bias: bool = True,
+        device=None,  # noqa: ANN001
+        dtype=None,  # noqa: ANN001
+    ) -> None:
+        super().__init__(in_features, out_features, bias, device, dtype)
+
+        self.input_dim = in_features
+        self.output_dim = out_features
+
     def forward(self, input: Tensor) -> Output:  # noqa: A002
         return super().forward(input)
 
