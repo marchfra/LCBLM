@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, TypeAlias
+from typing import TYPE_CHECKING, NamedTuple
 
 import torch
 from torch import Tensor, nn
@@ -12,23 +12,23 @@ if TYPE_CHECKING:
 class MLP(nn.Module):
     """MultiLayer Perceptron module."""
 
-    Output: TypeAlias = Tensor
-
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int) -> None:
         """Initialize the MultiLayer Perceptron module."""
         super().__init__()
 
-        self.linear1 = nn.Linear(input_dim, output_dim)
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
         self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.activation = nn.ReLU()
         self.linear2 = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x: Tensor) -> Output:
+    def forward(self, x: Tensor) -> Tensor:
         x: Tensor = self.linear1(x)
         x: Tensor = self.activation(x)
         return self.linear2(x)
 
-    def __call__(self, x: Tensor) -> Output:
+    def __call__(self, x: Tensor) -> Tensor:
         return super().__call__(x)
 
 
