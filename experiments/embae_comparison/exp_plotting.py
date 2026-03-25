@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import matplotlib as mpl
 import torch
 
@@ -16,7 +18,7 @@ import numpy as np
 from .exp_data import denormalize
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
     from sklearn.preprocessing import StandardScaler
     from torch import Tensor, nn
@@ -312,10 +314,11 @@ def plot_concept_dictionary(  # noqa: PLR0913
     fig.suptitle(title, fontsize=20)
     gs.tight_layout(fig)
 
-    path = out_dir / f"concept_dict_{model_name.lower()}_{n_concepts:03d}.png"
+    path = out_dir / "concept_dict" / f"{n_concepts:03d}_{model_name.lower()}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved {path.name}")
+    print(f"Saved {Path(*path.parts[-2:])}")
 
 
 def _ablated_recon(
@@ -343,7 +346,7 @@ def _ablated_recon(
     return recon.cpu().numpy()
 
 
-def plot_concept_ablation(  # noqa: PLR0913, PLR0915
+def _plot_concept_pair_grid(  # noqa: PLR0913
     model: nn.Module,
     model_name: str,
     n_concepts: int,
@@ -352,14 +355,19 @@ def plot_concept_ablation(  # noqa: PLR0913, PLR0915
     cfg: RunConfig,
     ds_cfg: DatasetConfig,
     out_dir: Path,
+    activations: np.ndarray,
+    right_col_fn: Callable[[int, int], np.ndarray],
+    left_subtitle: str,
+    right_subtitle: str,
+    title: str,
+    filename: str,
 ) -> None:
-    """Image grid showing decoded prototype and top-activating examples alongside their ablated reconstructions.
+    """Shared grid layout for concept pair plots (orig | right_col).
 
-    Layout per concept group (2 columns: orig | ablated):
-        row 0:   prototype image, spanning both columns, titled "CX"
-        row 1:   "orig" subtitle | "ablated" subtitle  (no images)
-        row 2:   (gap)
-        rows 3+: top-activating example | ablated reconstruction
+    Layout per concept group (2 columns):
+        row 0:   decoded prototype, spanning both columns, titled "CX"
+        row 1:   left_subtitle | right_subtitle
+        rows 2+: top-activating example | right_col_fn(ex_idx, concept_idx)
 
     Args:
         model: Trained model (best checkpoint).
@@ -370,28 +378,26 @@ def plot_concept_ablation(  # noqa: PLR0913, PLR0915
         cfg: Run hyperparameters.
         ds_cfg: Dataset metadata.
         out_dir: Directory to save the figure into.
+        activations: Array of shape (N, n_concepts) used to rank examples.
+        right_col_fn: Callable(ex_idx, concept_idx) → display-space image array
+            of shape ds_cfg.img_shape. Called once per (example, concept) pair.
+        left_subtitle: Label for the left column of each concept pair.
+        right_subtitle: Label for the right column of each concept pair.
+        title: Figure suptitle.
+        filename: Name of the output file, including its parent folder.
 
-    """  # noqa: E501
-    model.eval()
-    with torch.no_grad():
-        out = model(X_train.to(cfg.device))
-
-    activations: np.ndarray
-    if model_name == "SparseAE":
-        activations = out.latents.cpu().numpy()
-    else:
-        activations = out.scores.cpu().numpy()
-
+    """
     concept_total_act = activations.sum(axis=0)
     top_concept_idxs = np.argsort(concept_total_act)[::-1][: cfg.max_concepts_in_dict]
     n_show = len(top_concept_idxs)
 
+    X_np = X_train.numpy()  # noqa: N806
     n_example_rows = cfg.top_k_examples
     ncols = n_show * 2  # orig | ablated per concept
     # Row layout: prototype, subtitle, gap, examples
     height_ratios = [1.0, 0.2] + [
         1.0,
-    ] * n_example_rows  # [prototype, orig/ablated] + [examples]
+    ] * n_example_rows
     fig = plt.figure(figsize=(ncols * 0.9, (n_example_rows + 1.3) * 1.3))
     gs = fig.add_gridspec(
         n_example_rows + 2,
@@ -404,8 +410,8 @@ def plot_concept_ablation(  # noqa: PLR0913, PLR0915
     for concept_col, concept_idx in enumerate(top_concept_idxs):
         act = activations[:, concept_idx]
         top_ex_idxs = np.argsort(act)[::-1][: cfg.top_k_examples]
-        orig_col = concept_col * 2
-        ablated_col = orig_col + 1
+        left_col = concept_col * 2
+        right_col = left_col + 1
 
         # ── Prototype row (row 0): spans both columns ─────────────────────────
         proto_np = _decode_prototype(
@@ -417,7 +423,7 @@ def plot_concept_ablation(  # noqa: PLR0913, PLR0915
         )
         proto_img = denormalize(proto_np, scaler)[0].reshape(ds_cfg.img_shape)
         proto_img = np.clip(proto_img, 0, ds_cfg.img_vmax)
-        ax_proto = fig.add_subplot(gs[0, orig_col : ablated_col + 1])
+        ax_proto = fig.add_subplot(gs[0, left_col : right_col + 1])
         ax_proto.imshow(proto_img, cmap="gray_r", vmin=0, vmax=ds_cfg.img_vmax)
         ax_proto.set_xticks([])
         ax_proto.set_yticks([])
@@ -432,8 +438,8 @@ def plot_concept_ablation(  # noqa: PLR0913, PLR0915
                 va="center",
             )
 
-        # ── Subtitle row (row 1): "orig" | "ablated" side by side ─────────────
-        for col_idx, label in ((orig_col, "orig"), (ablated_col, "ablated")):
+        # ── Subtitle row (row 1) ──────────────────────────────────────────────
+        for col_idx, label in ((left_col, left_subtitle), (right_col, right_subtitle)):
             ax_sub = fig.add_subplot(gs[1, col_idx])
             ax_sub.axis("off")
             ax_sub.text(
@@ -448,38 +454,122 @@ def plot_concept_ablation(  # noqa: PLR0913, PLR0915
 
         # ── Example rows (rows 2+) ────────────────────────────────────────────
         for row, ex_idx in enumerate(top_ex_idxs):
-            x_single = X_train[ex_idx : ex_idx + 1]
-
-            img_orig = denormalize(
-                out.recon[ex_idx : ex_idx + 1].cpu().numpy(),
-                scaler,
-            )[0].reshape(ds_cfg.img_shape)
-            recon_np = _ablated_recon(
-                model,
-                model_name,
-                x_single,
-                concept_idx,
-                cfg.device,
+            img_orig = denormalize(X_np[ex_idx : ex_idx + 1], scaler)[0].reshape(
+                ds_cfg.img_shape,
             )
-            recon_np = denormalize(recon_np, scaler)
-            img_ablated = np.clip(
-                recon_np[0].reshape(ds_cfg.img_shape),
-                0,
-                ds_cfg.img_vmax,
-            )
+            img_orig = np.clip(img_orig, 0, ds_cfg.img_vmax)
+            img_right = right_col_fn(ex_idx, concept_idx)
 
-            for col_idx, img in ((orig_col, img_orig), (ablated_col, img_ablated)):
+            for col_idx, img in ((left_col, img_orig), (right_col, img_right)):
                 ax = fig.add_subplot(gs[row + 2, col_idx])
                 ax.imshow(img, cmap="gray_r", vmin=0, vmax=ds_cfg.img_vmax)
                 ax.axis("off")
 
+    fig.suptitle(title, fontsize=16)
+    gs.tight_layout(fig)
+    path = out_dir / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {Path(*path.parts[-2:])}")
+
+
+def plot_concept_ablation(  # noqa: PLR0913
+    model: nn.Module,
+    model_name: str,
+    n_concepts: int,
+    X_train: Tensor,
+    scaler: StandardScaler,
+    cfg: RunConfig,
+    ds_cfg: DatasetConfig,
+    out_dir: Path,
+) -> None:
+    """Image grid showing top-activating examples alongside their ablated reconstructions."""  # noqa: E501
+    model.eval()
+    with torch.no_grad():
+        out = model(X_train.to(cfg.device))
+
+    activations = (
+        out.latents.cpu().numpy()
+        if model_name == "SparseAE"
+        else out.scores.cpu().numpy()
+    )
+
+    def right_col_fn(ex_idx: int, concept_idx: int) -> np.ndarray:
+        x_single = X_train[ex_idx : ex_idx + 1]
+        recon_np = _ablated_recon(model, model_name, x_single, concept_idx, cfg.device)
+        recon_np = denormalize(recon_np, scaler)
+        return np.clip(recon_np[0].reshape(ds_cfg.img_shape), 0, ds_cfg.img_vmax)
+
+    n_show = min(n_concepts, cfg.max_concepts_in_dict)
     title = f"{model_name} — concept ablation ({n_concepts} concepts)"
     if n_concepts > cfg.max_concepts_in_dict:
         title += f"\nShowing {n_show} most-active concepts out of {n_concepts}"
-    fig.suptitle(title, fontsize=16)
-    gs.tight_layout(fig)
 
-    path = out_dir / f"concept_ablation_{model_name.lower()}_{n_concepts:03d}.png"
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved {path.name}")
+    _plot_concept_pair_grid(
+        model,
+        model_name,
+        n_concepts,
+        X_train,
+        scaler,
+        cfg,
+        ds_cfg,
+        out_dir,
+        activations=activations,
+        right_col_fn=right_col_fn,
+        left_subtitle="orig",
+        right_subtitle="ablated",
+        title=title,
+        filename=f"concept_ablation/{n_concepts:03d}_{model_name.lower()}.png",
+    )
+
+
+def plot_concept_reconstructions(  # noqa: PLR0913
+    model: nn.Module,
+    model_name: str,
+    n_concepts: int,
+    X_train: Tensor,
+    scaler: StandardScaler,
+    cfg: RunConfig,
+    ds_cfg: DatasetConfig,
+    out_dir: Path,
+) -> None:
+    """Image grid showing top-activating examples alongside their full reconstructions."""  # noqa: E501
+    model.eval()
+    with torch.no_grad():
+        out = model(X_train.to(cfg.device))
+
+    activations = (
+        out.latents.cpu().numpy()
+        if model_name == "SparseAE"
+        else out.scores.cpu().numpy()
+    )
+    recons_np = out.recon.cpu().numpy()
+
+    def right_col_fn(ex_idx: int, concept_idx: int) -> np.ndarray:  # noqa: ARG001
+        img = denormalize(recons_np[ex_idx : ex_idx + 1], scaler)[0].reshape(
+            ds_cfg.img_shape,
+        )
+        return np.clip(img, 0, ds_cfg.img_vmax)
+
+    n_show = min(n_concepts, cfg.max_concepts_in_dict)
+    title = f"{model_name} — concept reconstructions ({n_concepts} concepts)"
+    if n_concepts > cfg.max_concepts_in_dict:
+        title += f"\nShowing {n_show} most-active concepts out of {n_concepts}"
+
+    _plot_concept_pair_grid(
+        model,
+        model_name,
+        n_concepts,
+        X_train,
+        scaler,
+        cfg,
+        ds_cfg,
+        out_dir,
+        activations=activations,
+        right_col_fn=right_col_fn,
+        left_subtitle="orig",
+        right_subtitle="recon",
+        title=title,
+        filename=f"concept_recon/{n_concepts:03d}_{model_name.lower()}.png",
+    )

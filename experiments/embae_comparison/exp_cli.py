@@ -52,6 +52,7 @@ from .exp_io import load_results, save_results
 from .exp_plotting import (
     plot_concept_ablation,
     plot_concept_dictionary,
+    plot_concept_reconstructions,
     plot_l0_recon,
     plot_learning_curves,
 )
@@ -179,6 +180,16 @@ def cmd_run(args: argparse.Namespace) -> None:
             ds_cfg,
             out_dir,
         )
+        plot_concept_reconstructions(
+            model,
+            model_name,
+            n_concepts,
+            X_train,
+            scaler,
+            run_cfg,
+            ds_cfg,
+            out_dir,
+        )
 
     print(f"\nAll done — outputs in {out_dir}")
 
@@ -256,6 +267,16 @@ def cmd_plot(args: argparse.Namespace) -> None:
             out_dir,
         )
         plot_concept_ablation(
+            model,
+            model_name,
+            n_concepts,
+            X_train,
+            scaler,
+            run_cfg,
+            ds_cfg,
+            out_dir,
+        )
+        plot_concept_reconstructions(
             model,
             model_name,
             n_concepts,
