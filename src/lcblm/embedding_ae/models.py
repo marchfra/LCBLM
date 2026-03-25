@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, nn
 
 if TYPE_CHECKING:
-    from lcblm.typing import TensorModule
+    from lcblm.typing import ShapedTensorModule, TensorModule
 
 
 class MLP(nn.Module):
@@ -35,7 +35,7 @@ class MLP(nn.Module):
 class EmbeddingAE(nn.Module):
     """Embedding AutoEncoder (AE).
 
-    This class implements a autoencoder that learns a set of prototype embeddings. The
+    This class implements an autoencoder that learns a set of prototype embeddings. The
     encoder maps input vectors to embeddings, computes their alignment with prototypes,
     and applies a scoring function to produce scores. The decoder reconstructs the input
     from the embeddings multiplied by the respective score.
@@ -62,25 +62,44 @@ class EmbeddingAE(nn.Module):
 
     def __init__(
         self,
-        input_dim: int,
         num_embeddings: int,
         embedding_size: int,
+        encoder: ShapedTensorModule,
+        decoder: ShapedTensorModule,
         scoring_module: TensorModule,
     ) -> None:
         """Initialize an Embedding AutoEncoder.
 
         Args:
-            input_dim: The dimension of the input.
             num_embeddings: The number of embeddings of the AE.
             embedding_size: The size of each embedding.
+            encoder: Module mapping input_dim -> num_embeddings * embedding_size.
+            decoder: Module mapping num_embeddings * embedding_size -> input_dim.
             scoring_module: The Module to convert cosine alignment between embeddings
-                and prototypes to a score. It must implement a forward method that takes
-                in a Tensor and returns a Tensor.
+                and prototypes to a score.
 
         Raises:
+            TypeError: if encoder is not a subclass of torch.nn.Module.
+            TypeError: if decoder is not a subclass of torch.nn.Module.
             TypeError: if scoring_module is not a subclass of torch.nn.Module.
+            ValueError: if encoder.input_dim doesn't match decoder.output_dim.
+            ValueError: if encoder.output_dim doesn't match decoder.input_dim.
+            ValueError: if encoder.output_dim doesn't match num_embeddings *
+                embedding_size.
 
         """
+        if not isinstance(encoder, nn.Module):
+            msg = (
+                f"Expected encoder to be a torch.nn.Module subclass, "
+                f"got {type(encoder)}"
+            )
+            raise TypeError(msg)
+        if not isinstance(decoder, nn.Module):
+            msg = (
+                f"Expected decoder to be a torch.nn.Module subclass, "
+                f"got {type(decoder)}"
+            )
+            raise TypeError(msg)
         if not isinstance(scoring_module, nn.Module):
             msg = (
                 f"Expected scoring_module to be a torch.nn.Module subclass, "
@@ -88,26 +107,36 @@ class EmbeddingAE(nn.Module):
             )
             raise TypeError(msg)
 
+        if encoder.input_dim != decoder.output_dim:
+            msg = (
+                f"Expected encoder.input_dim == decoder.output_dim, "
+                f"got {encoder.input_dim} and {decoder.output_dim} respectively"
+            )
+            raise ValueError(msg)
+        if encoder.output_dim != decoder.input_dim:
+            msg = (
+                f"Expected encoder.output_dim == decoder.input_dim, "
+                f"got {encoder.output_dim} and {decoder.input_dim} respectively"
+            )
+            raise ValueError(msg)
+        if encoder.output_dim != num_embeddings * embedding_size:
+            msg = (
+                f"Expected encoder.output_dim == num_embeddings * embedding_size, "
+                f"got {encoder.output_dim} and {num_embeddings * embedding_size} "
+                f"respectively"
+            )
+            raise ValueError(msg)
+
         super().__init__()
 
-        self.input_dim = input_dim
         self.num_embeddings = num_embeddings
         self.embedding_size = embedding_size
+        self._encoder = encoder
+        self._decoder = decoder
         self.scoring_module = scoring_module
 
         self.prototypes = nn.Parameter(
             torch.randn(self.num_embeddings, self.embedding_size),
-        )
-        # TODO: use hidden_dim as a bottleneck, e.g., hidden_dim=32
-        self._encoder = MLP(
-            self.input_dim,
-            self.num_embeddings * self.embedding_size,
-            self.num_embeddings * self.embedding_size,
-        )
-        self._decoder = MLP(
-            self.num_embeddings * self.embedding_size,
-            self.input_dim,
-            self.input_dim,
         )
 
     def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
@@ -121,7 +150,7 @@ class EmbeddingAE(nn.Module):
         # Shape (batch_size, num_embeddings)
         # This computes the dot product between embedding i and prototype i, for each
         # sample in the batch. The string is an equation that uses Einstein index
-        # notation, i.e., sum_{e=0}^{emb_size - 1} embeds_{bne} * prots_{ne} = aligns_{bn}  # noqa: E501
+        # notation, i.e., sum_{e=0}^{emb_size-1} embeds_{bne} * prots_{ne} = aligns_{bn}
         alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
 
         # Shape (batch_size, num_embeddings)
