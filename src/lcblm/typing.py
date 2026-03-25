@@ -7,6 +7,11 @@ class TensorModule(Protocol):
     def forward(self, x: Tensor, /) -> Tensor: ...
 
 
+class ShapedTensorModule(TensorModule, Protocol):
+    input_dim: int
+    output_dim: int
+
+
 class TypedLinear(nn.Linear):
     Output: TypeAlias = Tensor
 
