@@ -1,5 +1,3 @@
-from typing import TypeAlias
-
 import torch
 from torch import Tensor
 from torch.nn import Module
@@ -119,7 +117,13 @@ def update_dead_latent_counts(activations: Tensor, prev_counts: Tensor) -> Tenso
     return count
 
 
-def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> Tensor:
+def gumbel_sigmoid(
+    logit_p: Tensor,
+    tau: float = 1.0,
+    mu: float = 0.0,
+    *,
+    hard: bool = False,
+) -> Tensor:
     """Sample from independent Bernoulli distributions using the Gumbel-Sigmoid trick.
 
     Produce a differentiable continuous relaxation of Bernoulli sampling by adding
@@ -160,11 +164,17 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
         be added or subtracted since it's zero-mean and symmetric; we subtract here
         to match the indicator function formulation l > g.
 
+        By varying the mu parameter, the sampling is shifted more toward 0 (lower mu) or
+        1 (higher mu). This is done by shifting the logistic noise g from having 0-mean
+        to E[g] = -mu, without changing the shape of the distribution.
+
     Args:
         logit_p: Logits (unnormalized log-odds) for each independent Bernoulli. Can be
             any shape. These are the log(p/(1-p)) values, NOT log probabilities.
         tau: Positive temperature parameter controlling the relaxation. Lower values
             produce sharper (more discrete) samples.
+        mu: Opposite of average value of logistic noise. Lower values bias the sampling
+            toward 0, higher values toward 1.
         hard: If True, returns hard binary samples (0 or 1) using the Straight-Through
             Estimator while maintaining gradients. If False, returns soft continuous
             values in [0, 1].
@@ -187,6 +197,9 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
         >>>
         >>> # Common pattern: soft during training, hard at inference
         >>> samples = gumbel_sigmoid(logits, tau=0.5, hard=not model.training)
+        >>>
+        >>> # Returns almost always 0
+        >>> zero_samples = gumbel_sigmoid(logits, mu=-100)
 
     Note:
         This implements the reparameterization trick for Bernoulli distributions.
@@ -211,7 +224,7 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
 
     u = torch.rand_like(logit_p)
     u = clamp_0_1(u)  # Avoid log(0) and division by 0 divergence
-    logit_u = torch.log(u / (1 - u))
+    logit_u = torch.log(u / (1 - u)) - mu
     y_soft = torch.sigmoid((logit_p - logit_u) / tau)
 
     if not hard:
@@ -224,16 +237,15 @@ def gumbel_sigmoid(logit_p: Tensor, tau: float = 1.0, *, hard: bool = False) -> 
 
 
 class GumbelSigmoid(Module):
-    Output: TypeAlias = Tensor
-
-    def __init__(self, tau: float = 1.0) -> None:
+    def __init__(self, tau: float = 1.0, mu: float = 0.0) -> None:
         super().__init__()
         self.tau = tau
+        self.mu = mu
 
-    def forward(self, x: Tensor) -> Output:
-        return gumbel_sigmoid(x, tau=self.tau, hard=self.training)
+    def forward(self, x: Tensor) -> Tensor:
+        return gumbel_sigmoid(x, tau=self.tau, mu=self.mu, hard=not self.training)
 
-    def __call__(self, x: Tensor) -> Output:
+    def __call__(self, x: Tensor) -> Tensor:
         return super().__call__(x)
 
 
