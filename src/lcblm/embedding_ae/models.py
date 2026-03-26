@@ -60,13 +60,15 @@ class EmbeddingAE(nn.Module):
         alignments: Tensor
         recon: Tensor
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         num_embeddings: int,
         embedding_size: int,
         encoder: ShapedTensorModule,
         decoder: ShapedTensorModule,
         scoring_module: TensorModule,
+        *,
+        decode_from_prototypes: bool = False,
     ) -> None:
         """Initialize an Embedding AutoEncoder.
 
@@ -77,6 +79,8 @@ class EmbeddingAE(nn.Module):
             decoder: Module mapping num_embeddings * embedding_size -> input_dim.
             scoring_module: The Module to convert cosine alignment between embeddings
                 and prototypes to a score.
+            decode_from_prototypes: Whether to reconstruct from computed embeddings or
+                from learned prototypes.
 
         Raises:
             TypeError: if encoder is not a subclass of torch.nn.Module.
@@ -139,6 +143,8 @@ class EmbeddingAE(nn.Module):
             torch.randn(self.num_embeddings, self.embedding_size),
         )
 
+        self._decode_from_prototypes = decode_from_prototypes
+
     def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         # Shape (batch_size, num_embeddings, embedding_size)
         embeddings = self._encoder(x).reshape(
@@ -168,8 +174,11 @@ class EmbeddingAE(nn.Module):
 
     def forward(self, x: Tensor) -> Output:
         embeddings, scores, alignments = self.encode(x)
-        # TODO: try decoding from prototypes instead of embeddings
-        recon = self.decode(embeddings, scores)
+        if self._decode_from_prototypes:
+            # WARNING: prototypes has different shape than embeddings
+            recon = self.decode(self.prototypes, scores)
+        else:
+            recon = self.decode(embeddings, scores)
 
         return self.Output(
             embeddings=embeddings,
