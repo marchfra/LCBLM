@@ -8,6 +8,7 @@ from pathlib import Path
 
 import matplotlib as mpl
 import torch
+from torch.nn import functional as F  # noqa: N812
 
 mpl.use("Agg")
 from typing import TYPE_CHECKING
@@ -204,6 +205,88 @@ def plot_learning_curves(
     fig.tight_layout()
     path = out_dir / "learning_curves.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {path.name}")
+
+
+def plot_per_sample_mse_boxplot(
+    trained_models: list[tuple[str, int, nn.Module]],
+    X_train: Tensor,
+    cfg: RunConfig,
+    ds_cfg: DatasetConfig,
+    out_dir: Path,
+) -> None:
+    """Box plot of per-sample reconstruction MSE across all trained models.
+
+    One box per (model_name, n_concepts) combination, ordered by n_concepts then
+    model type, so the two models at each concept count sit side by side.
+
+    Args:
+        trained_models: List of (model_name, n_concepts, model) triples.
+        X_train: Normalised training tensor.
+        cfg: Run hyperparameters.
+        ds_cfg: Dataset metadata (used for figure title).
+        out_dir: Directory to save the figure into.
+
+    """
+    per_sample_mses: list[np.ndarray] = []
+    labels: list[str] = []
+    colors: list[str] = []
+
+    # Sort so each n_concepts group appears together
+    ordered = sorted(trained_models, key=lambda t: (t[1], t[0]))
+
+    for model_name, n_concepts, model in ordered:
+        model.eval()
+        with torch.inference_mode():
+            out = model(X_train.to(cfg.device))
+            # Per-sample MSE: mean over feature dim, shape (N,)
+            mse = F.mse_loss(out.recon, X_train.to(cfg.device), reduction="none")
+            mse = mse.mean(dim=-1).cpu().numpy()
+        per_sample_mses.append(mse)
+        labels.append(f"{model_name}\nn={n_concepts}")
+        colors.append(COLORS[model_name])
+
+    fig, ax = plt.subplots(figsize=(max(6, len(labels) * 0.8), 5))
+    bp = ax.boxplot(
+        per_sample_mses,
+        patch_artist=True,
+        medianprops={"linewidth": 1.0, "color": "black"},
+        flierprops={"marker": ".", "markersize": 3, "alpha": 0.4},
+    )
+    for patch, color in zip(bp["boxes"], colors, strict=True):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.7)
+    # for whisker, color in zip(
+    #     bp["whiskers"],
+    #     [c for c in colors for _ in range(2)],
+    #     strict=True,
+    # ):
+    #     whisker.set_color(color)
+    # for cap, color in zip(
+    #     bp["caps"],
+    #     [c for c in colors for _ in range(2)],
+    #     strict=True,
+    # ):
+    #     cap.set_color(color)
+
+    ax.set_xticks(range(1, len(labels) + 1))
+    ax.set_xticks([], minor=True)
+    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_ylabel("Per-sample Recon MSE")
+    ax.set_title(f"{ds_cfg.name} — per-sample recon MSE")
+    ax.set_yscale("log")
+    # Add a legend for model colours
+    handles = [
+        plt.Rectangle((0, 0), 1, 1, facecolor=COLORS[m], alpha=0.7)
+        for m in ("EmbeddingAE", "SparseAE")
+    ]
+    ax.legend(handles, ("EmbeddingAE", "SparseAE"), fontsize=8)
+    fig.tight_layout()
+
+    path = out_dir / "mse_boxplot.png"
+    path.parent.mkdir(exist_ok=True)
+    fig.savefig(path, dpi=300)
     plt.close(fig)
     print(f"Saved {path.name}")
 

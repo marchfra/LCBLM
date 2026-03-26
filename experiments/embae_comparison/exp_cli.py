@@ -55,6 +55,7 @@ from .exp_plotting import (
     plot_concept_reconstructions,
     plot_l0_recon,
     plot_learning_curves,
+    plot_per_sample_mse_boxplot,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     print("\nGenerating plots...")
     plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
     plot_learning_curves(results, run_cfg, out_dir)
+    plot_per_sample_mse_boxplot(trained_models, X_train, run_cfg, ds_cfg, out_dir)
     for model_name, n_concepts, model in trained_models:
         plot_concept_dictionary(
             model,
@@ -246,6 +248,8 @@ def cmd_plot(args: argparse.Namespace) -> None:
         )
         scaler = fresh_scaler
 
+    # Re-run boxplot using reloaded checkpoints
+    plot_mse_models: list[tuple[str, int, nn.Module]] = []
     for result in results:
         model_name = result.model_name
         n_concepts = result.n_concepts
@@ -263,6 +267,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
         model.load_state_dict(
             torch.load(ckpt_path, map_location=run_cfg.device, weights_only=True),
         )
+        plot_mse_models.append((model_name, n_concepts, model))
         plot_concept_dictionary(
             model,
             model_name,
@@ -293,6 +298,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
             ds_cfg,
             out_dir,
         )
+    plot_per_sample_mse_boxplot(plot_mse_models, X_train, run_cfg, ds_cfg, out_dir)
 
     print(f"\nAll done — outputs in {out_dir}")
 
