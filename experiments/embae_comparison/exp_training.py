@@ -58,7 +58,7 @@ def build_embedding_ae(
         # ),
         # decoder=MLP(
         #     cfg.embedding_size * n_concepts,
-        #     cfg.embedding_size * n_concepts,
+        #     ds_cfg.input_dim,
         #     ds_cfg.input_dim,
         # ),
         scoring_module=GumbelSigmoid(tau=2 / 3),
