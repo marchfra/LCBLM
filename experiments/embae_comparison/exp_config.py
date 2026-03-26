@@ -40,6 +40,8 @@ class RunConfig:
         n_concepts_list: Concept counts to sweep over for both models.
         epochs: Number of training epochs.
         lr: Adam learning rate.
+        tau: GumbelSigmoid's tau parameter.
+        mu: GumbelSigmoid's mu parameter.
         sparsity_mode: Which sparsity penalty to apply. "l1" uses an L1 penalty
             on post-activation latents/scores; "kl" uses a Bernoulli KL penalty
             on pre-activation logits/alignments. The two modes are mutually
@@ -67,6 +69,8 @@ class RunConfig:
     n_concepts_list: list[int] = field(
         default_factory=lambda: [5, 10, 20, 30, 50, 100],
     )
+    tau: float = 1.0
+    mu: float = 0.0
     sparsity_mode: Literal["l1", "kl"] = "l1"
     lambda_l1: float = 1e-2
     lambda_kl: float = 1e-2

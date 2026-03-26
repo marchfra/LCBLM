@@ -77,7 +77,14 @@ def _out_dir(ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
         sparsity_dir = (
             Path("kl") / f"p_{run_cfg.target_p}" / f"lambda_kl_{run_cfg.lambda_kl:.0e}"
         )
-    p = Path(__file__).parent / "experiment_outputs" / ds_cfg.name / sparsity_dir
+    p = (
+        Path(__file__).parent
+        / "experiment_outputs"
+        / ds_cfg.name
+        / sparsity_dir
+        / f"tau_{run_cfg.tau:.0e}"
+        / f"mu_{run_cfg.mu:.0e}"
+    )
     shutil.rmtree(p, ignore_errors=True)
     p.mkdir(parents=True, exist_ok=True)
     return p

@@ -61,7 +61,7 @@ def build_embedding_ae(
         #     ds_cfg.input_dim,
         #     ds_cfg.input_dim,
         # ),
-        scoring_module=GumbelSigmoid(tau=2 / 3),
+        scoring_module=GumbelSigmoid(tau=cfg.tau, mu=cfg.mu),
     ).to(cfg.device)
 
 
