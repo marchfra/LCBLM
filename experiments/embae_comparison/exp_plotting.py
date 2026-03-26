@@ -243,9 +243,9 @@ def plot_concept_dictionary(  # noqa: PLR0913
     # Use raw (non-binarised) activations for ranking
     activations: np.ndarray
     if model_name == "SparseAE":
-        activations = out.latents.cpu().numpy()  # (N, n_concepts)
+        activations = out.latents_pre_activation.cpu().numpy()  # (N, n_concepts)
     else:
-        activations = out.scores.cpu().numpy()  # (N, n_concepts)
+        activations = out.alignments.cpu().numpy()  # (N, n_concepts)
 
     concept_total_act = activations.sum(axis=0)
     top_concept_idxs = np.argsort(concept_total_act)[::-1][: cfg.max_concepts_in_dict]
@@ -490,9 +490,9 @@ def plot_concept_ablation(  # noqa: PLR0913
         out = model(X_train.to(cfg.device))
 
     activations = (
-        out.latents.cpu().numpy()
+        out.latents_pre_activation.cpu().numpy()
         if model_name == "SparseAE"
-        else out.scores.cpu().numpy()
+        else out.alignments.cpu().numpy()
     )
 
     def right_col_fn(ex_idx: int, concept_idx: int) -> np.ndarray:
@@ -517,7 +517,7 @@ def plot_concept_ablation(  # noqa: PLR0913
         out_dir,
         activations=activations,
         right_col_fn=right_col_fn,
-        left_subtitle="orig",
+        left_subtitle="recon",
         right_subtitle="ablated",
         title=title,
         filename=f"concept_ablation/{n_concepts:03d}_{model_name.lower()}.png",
@@ -540,9 +540,9 @@ def plot_concept_reconstructions(  # noqa: PLR0913
         out = model(X_train.to(cfg.device))
 
     activations = (
-        out.latents.cpu().numpy()
+        out.latents_pre_activation.cpu().numpy()
         if model_name == "SparseAE"
-        else out.scores.cpu().numpy()
+        else out.alignments.cpu().numpy()
     )
     recons_np = out.recon.cpu().numpy()
 
