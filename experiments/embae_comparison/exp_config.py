@@ -19,6 +19,7 @@ class DatasetConfig:
 
     Attributes:
         name: Short identifier used in output paths (e.g. "digits", "mnist").
+        n_samples: Number of samples to load from the dataset. -1 means "all samples".
         input_dim: Flattened feature dimension fed to the models.
         img_shape: (H, W) used to reshape a flat sample for visualisation.
         img_vmax: Upper bound for imshow pixel range (16 for digits, 255 for MNIST).
@@ -26,6 +27,7 @@ class DatasetConfig:
     """
 
     name: str
+    n_samples: int
     input_dim: int
     img_shape: tuple[int, int]
     img_vmax: float

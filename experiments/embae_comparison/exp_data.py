@@ -52,16 +52,16 @@ def load_digits_data(
     y_full = digits.target
 
     if n_samples == -1:
-        n_samples = len(X_full)
-
-    # Stratified subsample
-    _, X_sub, _, y_sub = train_test_split(
-        X_full,
-        y_full,
-        test_size=n_samples,
-        random_state=random_state,
-        stratify=y_full,
-    )
+        X_sub, y_sub = X_full, y_full
+    else:
+        # Stratified subsample
+        _, X_sub, _, y_sub = train_test_split(
+            X_full,
+            y_full,
+            test_size=n_samples,
+            random_state=random_state,
+            stratify=y_full,
+        )
 
     X_train, X_test, y_train, y_test = train_test_split(
         X_sub,
@@ -180,6 +180,7 @@ DATASET_REGISTRY: dict[str, tuple[DatasetConfig, LoadDataFn]] = {
     "digits": (
         DatasetConfig(
             name="digits",
+            n_samples=-1,
             input_dim=64,
             img_shape=(8, 8),
             img_vmax=16.0,
@@ -189,6 +190,7 @@ DATASET_REGISTRY: dict[str, tuple[DatasetConfig, LoadDataFn]] = {
     "mnist": (
         DatasetConfig(
             name="mnist",
+            n_samples=10_000,
             input_dim=_MNIST_SIDE**2,
             img_shape=(_MNIST_SIDE, _MNIST_SIDE),
             img_vmax=255.0,
@@ -198,6 +200,7 @@ DATASET_REGISTRY: dict[str, tuple[DatasetConfig, LoadDataFn]] = {
     "mnist_14x14": (
         DatasetConfig(
             name="mnist_14x14",
+            n_samples=10_000,
             input_dim=_MNIST_DOWNSAMPLED_SIDE**2,
             img_shape=(_MNIST_DOWNSAMPLED_SIDE, _MNIST_DOWNSAMPLED_SIDE),
             img_vmax=255.0,

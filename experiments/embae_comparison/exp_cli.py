@@ -147,7 +147,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     print(f"Dataset : {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
     print(f"Device  : {run_cfg.device}")
 
-    X_train, X_test, _y_train, _y_test, scaler = load_data(run_cfg.n_samples)
+    X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
 
     results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
@@ -237,7 +237,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
 
     print("\nLoading data and checkpoints for concept dictionaries...")
     _, load_data = DATASET_REGISTRY[ds_cfg.name]
-    X_train, _X_test, _y_train, _y_test, fresh_scaler = load_data(run_cfg.n_samples)
+    X_train, _X_test, _y_train, _y_test, fresh_scaler = load_data(ds_cfg.n_samples)
     scaler_path = _scaler_path(out_dir)
     if scaler_path.exists():
         with scaler_path.open("rb") as f:
