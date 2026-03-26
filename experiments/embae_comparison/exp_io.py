@@ -101,3 +101,27 @@ def load_results(
     run_cfg = _run_config_from_dict(payload["run_config"])
     results = [_run_result_from_dict(r) for r in payload["results"]]
     return results, run_cfg, ds_cfg
+
+
+def save_config_json(
+    run_cfg: RunConfig,
+    ds_cfg: DatasetConfig,
+    path: Path,
+) -> None:
+    """Save RunConfig and DatasetConfig as a human-readable JSON file.
+
+    Written into each run folder so the run is fully self-contained.
+    Device is excluded (machine-specific).
+
+    Args:
+        run_cfg: Hyperparameter configuration for this run.
+        ds_cfg: Dataset metadata for this run.
+        path: Destination file path.
+
+    """
+    payload = {
+        "dataset_config": _dataset_config_to_dict(ds_cfg),
+        "run_config": _run_config_to_dict(run_cfg),
+    }
+    with path.open("w") as f:
+        json.dump(payload, f, indent=2)
