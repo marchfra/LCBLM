@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import trange
 
 from lcblm.embedding_ae import EmbeddingAE
+from lcblm.embedding_ae.models import MLP
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.activations import GumbelSigmoid
 from lcblm.sae_utils.dataset import compute_tied_bias
@@ -42,26 +43,31 @@ def build_embedding_ae(
     cfg: RunConfig,
     ds_cfg: DatasetConfig,
 ) -> EmbeddingAE:
+    if cfg.encoder_type == "mlp":
+        encoder = MLP(
+            ds_cfg.input_dim,
+            (cfg.embedding_size * n_concepts) // 2,
+            cfg.embedding_size * n_concepts,
+        )
+        decoder = MLP(
+            cfg.embedding_size * n_concepts,
+            (cfg.embedding_size * n_concepts) // 2,
+            ds_cfg.input_dim,
+        )
+    elif cfg.encoder_type == "lin":
+        encoder = TypedLinear(ds_cfg.input_dim, cfg.embedding_size * n_concepts)
+        decoder = TypedLinear(cfg.embedding_size * n_concepts, ds_cfg.input_dim)
+    else:
+        msg = "Invalid encoder type"
+        raise ValueError(msg)
+
     return EmbeddingAE(
         num_embeddings=n_concepts,
         embedding_size=cfg.embedding_size,
-        encoder=TypedLinear(ds_cfg.input_dim, cfg.embedding_size * n_concepts),
-        decoder=TypedLinear(
-            cfg.embedding_size * n_concepts,
-            ds_cfg.input_dim,
-            bias=False,
-        ),
-        # encoder=MLP(
-        #     ds_cfg.input_dim,
-        #     cfg.embedding_size * n_concepts,
-        #     cfg.embedding_size * n_concepts,
-        # ),
-        # decoder=MLP(
-        #     cfg.embedding_size * n_concepts,
-        #     ds_cfg.input_dim,
-        #     ds_cfg.input_dim,
-        # ),
+        encoder=encoder,
+        decoder=decoder,
         scoring_module=GumbelSigmoid(tau=cfg.tau, mu=cfg.mu),
+        decode_from_prototypes=cfg.decode_from_prototypes,
     ).to(cfg.device)
 
 

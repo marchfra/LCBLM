@@ -62,12 +62,17 @@ class RunConfig:
             figure (most-active concepts are shown first).
         seed: Global random seed.
         device: Torch device to train on.
+        encoder_type: The encoder/decoder to use in EmbeddingAE. Must be "lin" or "mlp".
+        decode_from_prototypes: Whether to decode from the EmbeddingAE prototypes of
+            from computed embeddings.
 
     """
 
     epochs: int
     lr: float
     n_samples: int = -1
+    encoder_type: Literal["lin", "mlp"] = "mlp"
+    decode_from_prototypes: bool = False
     n_concepts_list: list[int] = field(
         default_factory=lambda: [5, 10, 20, 30, 50, 100],
     )
