@@ -37,7 +37,6 @@ except ModuleNotFoundError:
     except ModuleNotFoundError as e:
         msg = "tomllib requires Python 3.11+. On older versions run: pip install tomli"
         raise ModuleNotFoundError(msg) from e
-
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -48,7 +47,7 @@ from lcblm.utils.seed import set_seeds
 
 from .exp_config import DatasetConfig, RunConfig
 from .exp_data import DATASET_REGISTRY
-from .exp_io import load_results, save_results
+from .exp_io import load_results, save_config_json, save_results
 from .exp_plotting import (
     plot_concept_ablation,
     plot_concept_dictionary,
@@ -57,6 +56,7 @@ from .exp_plotting import (
     plot_learning_curves,
     plot_per_sample_mse_boxplot,
 )
+from .exp_sweep import RunIndex, parse_sweep_config
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -303,6 +303,99 @@ def cmd_plot(args: argparse.Namespace) -> None:
     print(f"\nAll done — outputs in {out_dir}")
 
 
+def cmd_sweep(args: argparse.Namespace) -> None:
+    sweep_path = Path(args.config)
+    if not sweep_path.exists():
+        print(f"Error: sweep config not found: {sweep_path}", file=sys.stderr)
+        sys.exit(1)
+
+    ds_cfg, run_cfgs = parse_sweep_config(sweep_path)
+
+    base_dir = Path(__file__).parent / "experiment_outputs"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    index = RunIndex(base_dir / "sweep_index.json")
+
+    print(f"Sweep: {len(run_cfgs)} run(s) over cartesian product")
+    print(f"Dataset: {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
+    print(f"Device:  {run_cfgs[0].device}\n")
+
+    plt.style.use(["grid", "science", "notebook", "mylegend"])
+
+    _, load_data = DATASET_REGISTRY[ds_cfg.name]
+    X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)
+    print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
+
+    for i, run_cfg in enumerate(run_cfgs, 1):
+        # Check for existing identical run
+        existing = index.find_existing(run_cfg, ds_cfg)
+        if existing is not None:
+            print(f"[{i}/{len(run_cfgs)}] Skipping — identical to {existing}")
+            continue
+
+        run_id = index.next_run_id()
+        out_dir = base_dir / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"[{i}/{len(run_cfgs)}] Starting {run_id}")
+        set_seeds(run_cfg.seed)
+
+        # Save config before training so partial runs are inspectable
+        save_config_json(run_cfg, ds_cfg, out_dir / "config.json")
+
+        results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
+
+        save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
+        for model_name, n_concepts, model in trained_models:
+            ckpt_path = _checkpoint_path(out_dir, model_name, n_concepts)
+            torch.save(model.state_dict(), ckpt_path)
+
+        print(f"  Generating plots for {run_id}...")
+        plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
+        plot_learning_curves(results, run_cfg, out_dir)
+        plot_per_sample_mse_boxplot(trained_models, X_train, run_cfg, ds_cfg, out_dir)
+        for model_name, n_concepts, model in trained_models:
+            plot_concept_dictionary(
+                model,
+                model_name,
+                n_concepts,
+                X_train,
+                scaler,
+                run_cfg,
+                ds_cfg,
+                out_dir,
+            )
+            plot_concept_ablation(
+                model,
+                model_name,
+                n_concepts,
+                X_train,
+                scaler,
+                run_cfg,
+                ds_cfg,
+                out_dir,
+            )
+            plot_concept_reconstructions(
+                model,
+                model_name,
+                n_concepts,
+                X_train,
+                scaler,
+                run_cfg,
+                ds_cfg,
+                out_dir,
+            )
+
+        # Register and save index after each completed run so a crash midway
+        # doesn't lose track of finished runs
+        index.register(run_id, run_cfg, ds_cfg)
+        index.save()
+        print(f"  Done — outputs in ./{out_dir.relative_to(Path.cwd())}/\n")
+
+    print(
+        f"Sweep complete. Index at ./{(base_dir / 'sweep_index.json').relative_to(Path.cwd())}",  # noqa: E501
+    )
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
@@ -325,12 +418,20 @@ def main() -> None:
         help="Skip concept dictionary plots (avoids loading checkpoints and data).",
     )
 
+    sweep_p = sub.add_parser(
+        "sweep",
+        help="Run a cartesian product sweep from a sweep config.",
+    )
+    sweep_p.add_argument("config", help="Path to the sweep config TOML file.")
+
     args = parser.parse_args()
 
     if args.command == "run":
         cmd_run(args)
     elif args.command == "plot":
         cmd_plot(args)
+    elif args.command == "sweep":
+        cmd_sweep(args)
 
 
 if __name__ == "__main__":
