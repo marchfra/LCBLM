@@ -46,7 +46,11 @@ def build_embedding_ae(
         num_embeddings=n_concepts,
         embedding_size=cfg.embedding_size,
         encoder=TypedLinear(ds_cfg.input_dim, cfg.embedding_size * n_concepts),
-        decoder=TypedLinear(cfg.embedding_size * n_concepts, ds_cfg.input_dim),
+        decoder=TypedLinear(
+            cfg.embedding_size * n_concepts,
+            ds_cfg.input_dim,
+            bias=False,
+        ),
         # encoder=MLP(
         #     ds_cfg.input_dim,
         #     cfg.embedding_size * n_concepts,
