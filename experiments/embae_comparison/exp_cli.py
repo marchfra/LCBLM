@@ -73,7 +73,7 @@ def _load_run_config(raw: dict) -> RunConfig:
     )
 
 
-def _out_dir(ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
+def _out_dir(base_dir: Path, ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
     if run_cfg.sparsity_mode == "l1":
         sparsity_dir = Path("l1") / f"lambda_l1_{run_cfg.lambda_l1:.0e}"
     else:
@@ -81,8 +81,7 @@ def _out_dir(ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
             Path("kl") / f"p_{run_cfg.target_p}" / f"lambda_kl_{run_cfg.lambda_kl:.0e}"
         )
     p = (
-        Path(__file__).parent
-        / "experiment_outputs"
+        base_dir
         / ds_cfg.name
         / sparsity_dir
         / f"tau_{run_cfg.tau:.0e}"
@@ -153,7 +152,13 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
 
-    out_dir = _out_dir(ds_cfg, run_cfg)
+    out_dir = _out_dir(
+        Path.cwd() / args.out_dir
+        if args.out_dir
+        else Path(__file__).parent / "experiment_outputs",
+        ds_cfg,
+        run_cfg,
+    )
 
     # Persist results and checkpoints
     save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
@@ -314,7 +319,11 @@ def cmd_sweep(args: argparse.Namespace) -> None:
 
     ds_cfg, run_cfgs = parse_sweep_config(sweep_path)
 
-    base_dir = Path(__file__).parent / "experiment_outputs"
+    base_dir = (
+        Path.cwd() / args.out_dir
+        if args.out_dir
+        else Path(__file__).parent / "experiment_outputs"
+    )
     base_dir.mkdir(parents=True, exist_ok=True)
     index = RunIndex(base_dir / "sweep_index.json")
 
@@ -432,6 +441,13 @@ def main() -> None:
         default=False,
         help="Skip all plots.",
     )
+    run_p.add_argument(
+        "--out-dir",
+        "-o",
+        type=str,
+        default="",
+        help="Path to the output directory.",
+    )
 
     plot_p = sub.add_parser("plot", help="Regenerate plots from a saved results JSON.")
     plot_p.add_argument("results", help="Path to the results JSON file.")
@@ -459,6 +475,13 @@ def main() -> None:
         action="store_true",
         default=False,
         help="Skip all plots.",
+    )
+    sweep_p.add_argument(
+        "--out-dir",
+        "-o",
+        type=str,
+        default="",
+        help="Path to the output directory.",
     )
 
     args = parser.parse_args()
