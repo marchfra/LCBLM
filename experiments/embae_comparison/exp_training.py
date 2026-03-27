@@ -117,7 +117,6 @@ def train_sparse_ae(
         The best-checkpoint model and the run's recorded metrics.
 
     """
-    print("TRAINING SPARSE AE")
     model = build_sparse_ae(n_concepts, cfg, ds_cfg)
 
     geom_median = compute_tied_bias(X_train, 1)
@@ -273,7 +272,6 @@ def run_experiment(
             (train_sparse_ae, "SparseAE"),
             (train_embedding_ae, "EmbeddingAE"),
         ):
-            print("Hello")
             print(f"-- {label} | n_concepts={n_concepts} --")
             model, result = train_fn(n_concepts, X_train, X_test, cfg, ds_cfg)
             trained_models.append((label, n_concepts, model))
