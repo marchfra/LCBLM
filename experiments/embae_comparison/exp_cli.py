@@ -35,16 +35,16 @@ try:
     import tomllib
 except ModuleNotFoundError:
     try:
-        import tomli as tomllib  # type: ignore[no-redef]
+        import tomli as tomllib  # ty:ignore[unresolved-import]
     except ModuleNotFoundError as e:
         msg = "tomllib requires Python 3.11+. On older versions run: pip install tomli"
         raise ModuleNotFoundError(msg) from e
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import torch
 from torch import nn
 
+from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
 
 from .exp_config import DatasetConfig, RunConfig
@@ -143,7 +143,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
     run_cfg = _load_run_config(raw)
 
-    plt.style.use(["grid", "science", "notebook", "mylegend"])
+    set_plt_style(["grid", "science", "notebook", "mylegend"], "../../mplstyles/")
     set_seeds(run_cfg.seed)
 
     print(f"Dataset : {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
@@ -214,7 +214,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
     results, run_cfg, ds_cfg = load_results(results_path)
     out_dir = results_path.parent  # plots go next to the results file
 
-    plt.style.use(["grid", "science", "notebook", "mylegend"])
+    set_plt_style(["grid", "science", "notebook", "mylegend"], "../../mplstyles/")
 
     print(f"Loaded {len(results)} run(s) from {results_path}")
     print(f"Dataset: {ds_cfg.name}")
@@ -321,7 +321,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     print(f"Dataset: {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
     print(f"Device:  {run_cfgs[0].device}\n")
 
-    plt.style.use(["grid", "science", "notebook", "mylegend"])
+    set_plt_style(["grid", "science", "notebook", "mylegend"], "../../mplstyles/")
 
     _, load_data = DATASET_REGISTRY[ds_cfg.name]
     X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)
