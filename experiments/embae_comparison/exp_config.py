@@ -38,7 +38,6 @@ class RunConfig:
     """All training hyperparameters for a single experiment run.
 
     Attributes:
-        n_samples: Number of samples of the dataset to use.
         n_concepts_list: Concept counts to sweep over for both models.
         epochs: Number of training epochs.
         lr: Adam learning rate.
@@ -70,7 +69,6 @@ class RunConfig:
 
     epochs: int
     lr: float
-    n_samples: int = -1
     encoder_type: Literal["lin", "mlp"] = "mlp"
     decode_from_prototypes: bool = False
     n_concepts_list: list[int] = field(
