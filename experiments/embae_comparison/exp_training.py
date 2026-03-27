@@ -118,6 +118,7 @@ def train_sparse_ae(
         The best-checkpoint model and the run's recorded metrics.
 
     """
+    print("TRAINING SPARSE AE")
     model = build_sparse_ae(n_concepts, cfg, ds_cfg)
     print(model)
     print(model.device)

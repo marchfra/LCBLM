@@ -150,7 +150,9 @@ def cmd_run(args: argparse.Namespace) -> None:
     X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
 
+    print("RUNNING EXPERIMENT")
     results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
+    print("RAN EXPERIMENT")
 
     out_dir = _out_dir(
         Path.cwd() / args.out_dir
