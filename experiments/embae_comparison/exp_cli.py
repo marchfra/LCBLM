@@ -346,6 +346,10 @@ def cmd_sweep(args: argparse.Namespace) -> None:
         # Save config before training so partial runs are inspectable
         save_config_json(run_cfg, ds_cfg, out_dir / "config.json")
 
+        with _scaler_path(out_dir).open("wb") as f:
+            pickle.dump(scaler, f)
+        print(f"Saved scaler to {_scaler_path(out_dir).name}")
+
         results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
 
         save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
