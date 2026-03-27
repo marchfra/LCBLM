@@ -46,12 +46,12 @@ def build_embedding_ae(
     if cfg.encoder_type == "mlp":
         encoder = MLP(
             ds_cfg.input_dim,
-            (cfg.embedding_size * n_concepts) // 2,
+            cfg.embedding_size * n_concepts,
             cfg.embedding_size * n_concepts,
         )
         decoder = MLP(
             cfg.embedding_size * n_concepts,
-            (cfg.embedding_size * n_concepts) // 2,
+            cfg.embedding_size * n_concepts,
             ds_cfg.input_dim,
         )
     elif cfg.encoder_type == "lin":
