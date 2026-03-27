@@ -26,6 +26,8 @@ import argparse
 import pickle
 import shutil
 import sys
+import time
+from datetime import timedelta
 
 from .exp_training import build_embedding_ae, build_sparse_ae, run_experiment
 
@@ -326,6 +328,8 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
 
     for i, run_cfg in enumerate(run_cfgs, 1):
+        start_time = time.time()
+
         # Check for existing identical run
         existing = index.find_existing(run_cfg, ds_cfg)
         if existing is not None:
@@ -389,7 +393,10 @@ def cmd_sweep(args: argparse.Namespace) -> None:
         # doesn't lose track of finished runs
         index.register(run_id, run_cfg, ds_cfg)
         index.save()
-        print(f"  Done — outputs in ./{out_dir.relative_to(Path.cwd())}/\n")
+        print(
+            f"  Done in {timedelta(seconds=round(time.time() - start_time))} — "
+            f"outputs in ./{out_dir.relative_to(Path.cwd())}/\n",
+        )
 
     print(
         f"Sweep complete. Index at ./{(base_dir / 'sweep_index.json').relative_to(Path.cwd())}",  # noqa: E501
