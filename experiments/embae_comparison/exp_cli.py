@@ -429,6 +429,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    print("MAIN ENTRY POINT")
     parser = argparse.ArgumentParser(
         prog="exp_cli",
         description="SparseAE vs EmbeddingAE comparison experiment.",
@@ -489,6 +490,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "run":
+        print("RUNNING COMMAND 'RUN'")
         cmd_run(args)
     elif args.command == "plot":
         cmd_plot(args)
