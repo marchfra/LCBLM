@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -118,6 +119,9 @@ def train_sparse_ae(
 
     """
     model = build_sparse_ae(n_concepts, cfg, ds_cfg)
+    print(model)
+    print(model.device)
+    sys.exit(0)
 
     geom_median = compute_tied_bias(X_train, 1)
     model.init_tied_bias(geom_median)
