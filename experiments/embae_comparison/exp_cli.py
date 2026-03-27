@@ -143,7 +143,6 @@ def cmd_run(args: argparse.Namespace) -> None:
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
     run_cfg = _load_run_config(raw)
 
-    set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
     set_seeds(run_cfg.seed)
 
     print(f"Dataset : {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
@@ -166,41 +165,43 @@ def cmd_run(args: argparse.Namespace) -> None:
         torch.save(model.state_dict(), ckpt_path)
         print(f"Saved checkpoint {ckpt_path.name}")
 
-    print("\nGenerating plots...")
-    plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
-    plot_learning_curves(results, run_cfg, out_dir)
-    plot_per_sample_mse_boxplot(trained_models, X_train, run_cfg, ds_cfg, out_dir)
-    for model_name, n_concepts, model in trained_models:
-        plot_concept_dictionary(
-            model,
-            model_name,
-            n_concepts,
-            X_train,
-            scaler,
-            run_cfg,
-            ds_cfg,
-            out_dir,
-        )
-        plot_concept_ablation(
-            model,
-            model_name,
-            n_concepts,
-            X_train,
-            scaler,
-            run_cfg,
-            ds_cfg,
-            out_dir,
-        )
-        plot_concept_reconstructions(
-            model,
-            model_name,
-            n_concepts,
-            X_train,
-            scaler,
-            run_cfg,
-            ds_cfg,
-            out_dir,
-        )
+    if not args.no_plots:
+        print("\nGenerating plots...")
+        set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
+        plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
+        plot_learning_curves(results, run_cfg, out_dir)
+        plot_per_sample_mse_boxplot(trained_models, X_train, run_cfg, ds_cfg, out_dir)
+        for model_name, n_concepts, model in trained_models:
+            plot_concept_dictionary(
+                model,
+                model_name,
+                n_concepts,
+                X_train,
+                scaler,
+                run_cfg,
+                ds_cfg,
+                out_dir,
+            )
+            plot_concept_ablation(
+                model,
+                model_name,
+                n_concepts,
+                X_train,
+                scaler,
+                run_cfg,
+                ds_cfg,
+                out_dir,
+            )
+            plot_concept_reconstructions(
+                model,
+                model_name,
+                n_concepts,
+                X_train,
+                scaler,
+                run_cfg,
+                ds_cfg,
+                out_dir,
+            )
 
     print(f"\nAll done — outputs in {out_dir}")
 
@@ -214,11 +215,11 @@ def cmd_plot(args: argparse.Namespace) -> None:
     results, run_cfg, ds_cfg = load_results(results_path)
     out_dir = results_path.parent  # plots go next to the results file
 
-    set_plt_style(["grid", "science", "notebook", "mylegend"], "../../mplstyles/")
-
     print(f"Loaded {len(results)} run(s) from {results_path}")
     print(f"Dataset: {ds_cfg.name}")
     print("Generating plots...")
+
+    set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
 
     plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
     plot_learning_curves(results, run_cfg, out_dir)
@@ -321,8 +322,6 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     print(f"Dataset: {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
     print(f"Device:  {run_cfgs[0].device}\n")
 
-    set_plt_style(["grid", "science", "notebook", "mylegend"], "../../mplstyles/")
-
     _, load_data = DATASET_REGISTRY[ds_cfg.name]
     X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
@@ -357,41 +356,49 @@ def cmd_sweep(args: argparse.Namespace) -> None:
             ckpt_path = _checkpoint_path(out_dir, model_name, n_concepts)
             torch.save(model.state_dict(), ckpt_path)
 
-        print(f"  Generating plots for {run_id}...")
-        plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
-        plot_learning_curves(results, run_cfg, out_dir)
-        plot_per_sample_mse_boxplot(trained_models, X_train, run_cfg, ds_cfg, out_dir)
-        for model_name, n_concepts, model in trained_models:
-            plot_concept_dictionary(
-                model,
-                model_name,
-                n_concepts,
+        if not args.no_plots:
+            print(f"  Generating plots for {run_id}...")
+            set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
+            plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
+            plot_learning_curves(results, run_cfg, out_dir)
+            plot_per_sample_mse_boxplot(
+                trained_models,
                 X_train,
-                scaler,
                 run_cfg,
                 ds_cfg,
                 out_dir,
             )
-            plot_concept_ablation(
-                model,
-                model_name,
-                n_concepts,
-                X_train,
-                scaler,
-                run_cfg,
-                ds_cfg,
-                out_dir,
-            )
-            plot_concept_reconstructions(
-                model,
-                model_name,
-                n_concepts,
-                X_train,
-                scaler,
-                run_cfg,
-                ds_cfg,
-                out_dir,
-            )
+            for model_name, n_concepts, model in trained_models:
+                plot_concept_dictionary(
+                    model,
+                    model_name,
+                    n_concepts,
+                    X_train,
+                    scaler,
+                    run_cfg,
+                    ds_cfg,
+                    out_dir,
+                )
+                plot_concept_ablation(
+                    model,
+                    model_name,
+                    n_concepts,
+                    X_train,
+                    scaler,
+                    run_cfg,
+                    ds_cfg,
+                    out_dir,
+                )
+                plot_concept_reconstructions(
+                    model,
+                    model_name,
+                    n_concepts,
+                    X_train,
+                    scaler,
+                    run_cfg,
+                    ds_cfg,
+                    out_dir,
+                )
 
         # Register and save index after each completed run so a crash midway
         # doesn't lose track of finished runs
@@ -419,6 +426,12 @@ def main() -> None:
 
     run_p = sub.add_parser("run", help="Train models from a TOML config file.")
     run_p.add_argument("config", help="Path to the run config TOML file.")
+    run_p.add_argument(
+        "--no-plots",
+        action="store_true",
+        default=False,
+        help="Skip all plots.",
+    )
 
     plot_p = sub.add_parser("plot", help="Regenerate plots from a saved results JSON.")
     plot_p.add_argument("results", help="Path to the results JSON file.")
@@ -434,6 +447,12 @@ def main() -> None:
         help="Run a cartesian product sweep from a sweep config.",
     )
     sweep_p.add_argument("config", help="Path to the sweep config TOML file.")
+    sweep_p.add_argument(
+        "--no-plots",
+        action="store_true",
+        default=False,
+        help="Skip all plots.",
+    )
 
     args = parser.parse_args()
 
