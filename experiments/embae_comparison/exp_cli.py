@@ -219,7 +219,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
     print(f"Dataset: {ds_cfg.name}")
     print("Generating plots...")
 
-    set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
+    set_plt_style(["grid", "science", "notebook", "mylegend"], args.mplstyles)
 
     plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
     plot_learning_curves(results, run_cfg, out_dir)
@@ -435,6 +435,13 @@ def main() -> None:
 
     plot_p = sub.add_parser("plot", help="Regenerate plots from a saved results JSON.")
     plot_p.add_argument("results", help="Path to the results JSON file.")
+    plot_p.add_argument(
+        "--mplstyles",
+        "-mpls",
+        type=str,
+        default="mplstyles",
+        help="Path to the matplotlib stylesheet.",
+    )
     plot_p.add_argument(
         "--no-concept-dicts",
         action="store_true",
