@@ -143,7 +143,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
     run_cfg = _load_run_config(raw)
 
-    set_plt_style(["grid", "science", "notebook", "mylegend"], "../../mplstyles/")
+    set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
     set_seeds(run_cfg.seed)
 
     print(f"Dataset : {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
