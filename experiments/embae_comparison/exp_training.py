@@ -277,6 +277,7 @@ def run_experiment(
             (train_sparse_ae, "SparseAE"),
             (train_embedding_ae, "EmbeddingAE"),
         ):
+            print("Hello")
             print(f"-- {label} | n_concepts={n_concepts} --")
             model, result = train_fn(n_concepts, X_train, X_test, cfg, ds_cfg)
             trained_models.append((label, n_concepts, model))
