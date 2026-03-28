@@ -118,13 +118,9 @@ def train_sparse_ae(
 
     """
     model = build_sparse_ae(n_concepts, cfg, ds_cfg)
-    print(model)
-    print(model.device)
 
     geom_median = compute_tied_bias(X_train, 1)
     model.init_tied_bias(geom_median)
-    print(model.tied_bias)
-    print(model.tied_bias.device)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     loader = _make_loader(X_train, cfg.batch_size)
