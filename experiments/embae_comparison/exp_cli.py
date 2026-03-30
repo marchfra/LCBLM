@@ -141,6 +141,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
     run_cfg = _load_run_config(raw)
+    print(f"{run_cfg.device = }")
 
     set_seeds(run_cfg.seed)
 
@@ -336,6 +337,8 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
 
     for i, run_cfg in enumerate(run_cfgs, 1):
+        print(f"{run_cfg.device = }")
+
         start_time = time.time()
 
         # Check for existing identical run

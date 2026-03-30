@@ -131,7 +131,7 @@ def train_sparse_ae(
     for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_recon = 0.0
-        for (xb,) in loader:
+        for i, (xb,) in enumerate(loader):
             xb = xb.to(cfg.device)  # noqa: PLW2901
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
@@ -150,6 +150,14 @@ def train_sparse_ae(
             loss.backward()
             optimizer.step()
             epoch_recon += recon_loss.item()
+            if _epoch == 0 and i == 0:
+                print(f"{xb.device = }")
+                print(f"{out.latents_pre_activation.device = }")
+                print(f"{out.recon.device = }")
+                print(f"{out.latents.device = }")
+                print(f"{recon_loss.device = }")
+                print(f"{sparsity_loss.device = }")
+                print(f"{loss.device = }")
 
         result.train_recon.append(epoch_recon / len(loader))
 
@@ -200,10 +208,12 @@ def train_embedding_ae(
     X_test_d = X_test.to(cfg.device)
     best_state: dict = {}
 
+    print(f"{model.device = }")
+
     for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_recon = 0.0
-        for (xb,) in loader:
+        for i, (xb,) in enumerate(loader):
             xb = xb.to(cfg.device)  # noqa: PLW2901
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
@@ -222,6 +232,15 @@ def train_embedding_ae(
             loss.backward()
             optimizer.step()
             epoch_recon += recon_loss.item()
+            if _epoch == 0 and i == 0:
+                print(f"{xb.device = }")
+                print(f"{out.alignments.device = }")
+                print(f"{out.embeddings.device = }")
+                print(f"{out.recon.device = }")
+                print(f"{out.scores.device = }")
+                print(f"{recon_loss.device = }")
+                print(f"{sparsity_loss.device = }")
+                print(f"{loss.device = }")
 
         result.train_recon.append(epoch_recon / len(loader))
 
