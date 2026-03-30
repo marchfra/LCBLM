@@ -145,6 +145,11 @@ class EmbeddingAE(nn.Module):
 
         self._decode_from_prototypes = decode_from_prototypes
 
+    @property
+    def device(self) -> torch.device:
+        """Get the device of the parameters."""
+        return next(self.parameters()).device
+
     def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         # Shape (batch_size, num_embeddings, embedding_size)
         embeddings = self._encoder(x).reshape(
