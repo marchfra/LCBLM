@@ -141,7 +141,6 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
     run_cfg = _load_run_config(raw)
-    print(f"{run_cfg.device = }")
 
     set_seeds(run_cfg.seed)
 
@@ -151,7 +150,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
 
-    results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
+    results, trained_models = run_experiment(
+        X_train.to(run_cfg.device),
+        X_test,
+        run_cfg,
+        ds_cfg,
+    )
 
     out_dir = _out_dir(
         Path.cwd() / args.out_dir
