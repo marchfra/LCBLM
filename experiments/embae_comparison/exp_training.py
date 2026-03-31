@@ -119,7 +119,7 @@ def train_sparse_ae(
     """
     model = build_sparse_ae(n_concepts, cfg, ds_cfg)
 
-    geom_median = compute_tied_bias(X_train, 1)
+    geom_median = compute_tied_bias(X_train.cpu(), 1)
     model.init_tied_bias(geom_median)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
