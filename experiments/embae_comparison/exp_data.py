@@ -190,7 +190,7 @@ DATASET_REGISTRY: dict[str, tuple[DatasetConfig, LoadDataFn]] = {
     "mnist": (
         DatasetConfig(
             name="mnist",
-            n_samples=-1,
+            n_samples=10_000,
             input_dim=_MNIST_SIDE**2,
             img_shape=(_MNIST_SIDE, _MNIST_SIDE),
             img_vmax=255.0,
