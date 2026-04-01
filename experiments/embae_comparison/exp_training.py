@@ -19,7 +19,10 @@ from lcblm.embedding_ae.models import MLP
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.activations import GumbelSigmoid
 from lcblm.sae_utils.dataset import compute_tied_bias
-from lcblm.sae_utils.losses import bernoulli_kl_loss
+from lcblm.sae_utils.losses import (
+    bernoulli_kl_loss_from_logits,
+    bernoulli_kl_loss_from_probs,
+)
 from lcblm.typing import TypedLinear
 
 from .exp_metrics import l0_embedding, l0_sparse
@@ -138,7 +141,7 @@ def train_sparse_ae(
             if cfg.sparsity_mode == "l1":
                 sparsity_loss = cfg.lambda_l1 * out.latents.abs().mean()
             elif cfg.sparsity_mode == "kl":
-                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss(
+                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss_from_logits(
                     out.latents_pre_activation,
                     cfg.target_p,
                 )
@@ -210,8 +213,8 @@ def train_embedding_ae(
             if cfg.sparsity_mode == "l1":
                 sparsity_loss = cfg.lambda_l1 * out.scores.abs().mean()
             elif cfg.sparsity_mode == "kl":
-                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss(
-                    out.alignments,
+                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss_from_probs(
+                    out.scores,
                     cfg.target_p,
                 )
             else:
