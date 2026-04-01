@@ -163,17 +163,13 @@ class EmbeddingAE(nn.Module):
             self.num_embeddings,
             self.embedding_size,
         )
-
         embeddings = F.normalize(embeddings, dim=-1)
-        # Normalize a nn.Parameter in place while keeping it an nn.Parameter
-        with torch.no_grad():
-            self._prototypes.copy_(F.normalize(self._prototypes, dim=-1))
 
         # Shape (batch_size, num_embeddings)
         # This computes the dot product between embedding i and prototype i, for each
         # sample in the batch. The string is an equation that uses Einstein index
         # notation, i.e., sum_{e=0}^{emb_size-1} embeds_{bne} * prots_{ne} = aligns_{bn}
-        alignments = torch.einsum("bne,ne->bn", embeddings, self._prototypes)
+        alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
 
         # Shape (batch_size, num_embeddings)
         scores: Tensor = self.scoring_module(alignments)
