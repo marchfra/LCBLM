@@ -8,9 +8,12 @@ they can be safely passed around without risk of accidental mutation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import torch
+from lcblm.utils import get_device
+
+if TYPE_CHECKING:
+    import torch
 
 
 @dataclass(frozen=True)
@@ -85,8 +88,4 @@ class RunConfig:
     top_k_examples: int = 5
     max_concepts_in_dict: int = 20
     seed: int = 0
-    device: torch.device = field(
-        default_factory=lambda: torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu",
-        ),
-    )
+    device: torch.device = field(default_factory=get_device)

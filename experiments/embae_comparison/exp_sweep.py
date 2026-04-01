@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import copy
 
+from lcblm.utils import get_device
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -35,8 +37,6 @@ import itertools
 import json
 from dataclasses import asdict as _asdict
 from typing import TYPE_CHECKING
-
-import torch
 
 from .exp_config import RunConfig
 from .exp_data import DATASET_REGISTRY
@@ -130,7 +130,7 @@ def parse_sweep_config(
         axis_names = list(sweep_axes.keys())
         combinations = list(itertools.product(*sweep_axes.values()))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     seen: list[dict] = []
     run_cfgs: list[RunConfig] = []
     for combo in combinations:

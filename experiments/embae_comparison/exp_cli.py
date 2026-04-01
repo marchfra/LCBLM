@@ -29,6 +29,8 @@ import sys
 import time
 from datetime import timedelta
 
+from lcblm.utils import get_device
+
 from .exp_training import build_embedding_ae, build_sparse_ae, run_experiment
 
 try:
@@ -67,10 +69,7 @@ def _load_run_config(raw: dict) -> RunConfig:
     """Build a RunConfig from a config-file dict, ignoring unknown keys."""
     known = set(RunConfig.__dataclass_fields__)
     filtered = {k: v for k, v in raw.items() if k in known}
-    return RunConfig(
-        **filtered,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-    )
+    return RunConfig(**filtered, device=get_device())
 
 
 def _out_dir(base_dir: Path, ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
