@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple
 
 import torch
+import torch.nn.functional as F  # noqa: N812
 from torch import Tensor, nn
 
 if TYPE_CHECKING:
@@ -139,7 +140,7 @@ class EmbeddingAE(nn.Module):
         self._decoder = decoder
         self.scoring_module = scoring_module
 
-        self.prototypes = nn.Parameter(
+        self._prototypes = nn.Parameter(
             torch.randn(self.num_embeddings, self.embedding_size),
         )
 
@@ -150,6 +151,11 @@ class EmbeddingAE(nn.Module):
         """Get the device of the parameters."""
         return next(self.parameters()).device
 
+    @property
+    def prototypes(self) -> Tensor:
+        """Get the normalized prototypes of the model."""
+        return F.normalize(self._prototypes, dim=-1)
+
     def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         # Shape (batch_size, num_embeddings, embedding_size)
         embeddings = self._encoder(x).reshape(
@@ -158,11 +164,16 @@ class EmbeddingAE(nn.Module):
             self.embedding_size,
         )
 
+        embeddings = F.normalize(embeddings, dim=-1)
+        # Normalize a nn.Parameter in place while keeping it an nn.Parameter
+        with torch.no_grad():
+            self._prototypes.copy_(F.normalize(self._prototypes, dim=-1))
+
         # Shape (batch_size, num_embeddings)
         # This computes the dot product between embedding i and prototype i, for each
         # sample in the batch. The string is an equation that uses Einstein index
         # notation, i.e., sum_{e=0}^{emb_size-1} embeds_{bne} * prots_{ne} = aligns_{bn}
-        alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
+        alignments = torch.einsum("bne,ne->bn", embeddings, self._prototypes)
 
         # Shape (batch_size, num_embeddings)
         scores: Tensor = self.scoring_module(alignments)
@@ -180,7 +191,6 @@ class EmbeddingAE(nn.Module):
     def forward(self, x: Tensor) -> Output:
         embeddings, scores, alignments = self.encode(x)
         if self._decode_from_prototypes:
-            # WARNING: prototypes has different shape than embeddings
             recon = self.decode(self.prototypes, scores)
         else:
             recon = self.decode(embeddings, scores)
