@@ -19,7 +19,7 @@ from lcblm.embedding_ae.models import MLP
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.activations import GumbelSigmoid
 from lcblm.sae_utils.dataset import compute_tied_bias
-from lcblm.sae_utils.losses import bernoulli_kl_loss
+from lcblm.sae_utils.losses import bernoulli_kl_loss, bernoulli_kl_loss_from_probs
 from lcblm.typing import TypedLinear
 
 from .exp_metrics import l0_embedding, l0_sparse
@@ -68,6 +68,7 @@ def build_embedding_ae(
         decoder=decoder,
         scoring_module=GumbelSigmoid(tau=cfg.tau, mu=cfg.mu),
         decode_from_prototypes=cfg.decode_from_prototypes,
+        normalize=cfg.normalize_embeddings,
     ).to(cfg.device)
 
 
@@ -93,8 +94,9 @@ class RunResult:
     best_test_recon: float = float("inf")
 
 
-def _make_loader(X: Tensor, batch_size: int) -> DataLoader:
-    return DataLoader(TensorDataset(X), batch_size=batch_size, shuffle=True)
+def _make_loader(X: Tensor, batch_size: int, device: torch.device) -> DataLoader:
+    """Move the full dataset to device once, then wrap in a DataLoader."""
+    return DataLoader(TensorDataset(X.to(device)), batch_size=batch_size, shuffle=True)
 
 
 def train_sparse_ae(
@@ -123,7 +125,7 @@ def train_sparse_ae(
     model.init_tied_bias(geom_median)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
-    loader = _make_loader(X_train, cfg.batch_size)
+    loader = _make_loader(X_train, cfg.batch_size, cfg.device)
     result = RunResult(model_name="SparseAE", n_concepts=n_concepts)
     X_test_d = X_test.to(cfg.device)
     best_state: dict = {}
@@ -132,7 +134,6 @@ def train_sparse_ae(
         model.train()
         epoch_recon = 0.0
         for (xb,) in loader:
-            xb = xb.to(cfg.device)  # noqa: PLW2901
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
             if cfg.sparsity_mode == "l1":
@@ -195,7 +196,7 @@ def train_embedding_ae(
     model = build_embedding_ae(n_concepts, cfg, ds_cfg)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
-    loader = _make_loader(X_train, cfg.batch_size)
+    loader = _make_loader(X_train, cfg.batch_size, cfg.device)
     result = RunResult(model_name="EmbeddingAE", n_concepts=n_concepts)
     X_test_d = X_test.to(cfg.device)
     best_state: dict = {}
@@ -204,20 +205,27 @@ def train_embedding_ae(
         model.train()
         epoch_recon = 0.0
         for (xb,) in loader:
-            xb = xb.to(cfg.device)  # noqa: PLW2901
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
             if cfg.sparsity_mode == "l1":
                 sparsity_loss = cfg.lambda_l1 * out.scores.abs().mean()
             elif cfg.sparsity_mode == "kl":
-                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss(
-                    out.alignments,
+                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss_from_probs(
+                    out.scores,
                     cfg.target_p,
                 )
             else:
                 msg = "Invalid sparsity mode"
                 raise ValueError(msg)
             loss = recon_loss + sparsity_loss
+            if cfg.lambda_reg > 0.0:
+                # Penalise distance between encoder embeddings and prototypes,
+                # weighted by concept scores so only active concepts are pulled.
+                # embeddings: (batch, n_concepts, embed_size)
+                # prototypes: (n_concepts, embed_size)
+                diff = out.embeddings - model.prototypes.unsqueeze(0)
+                reg_loss = cfg.lambda_reg * (diff.pow(2).sum(dim=-1) * out.scores).mean()
+                loss = loss + reg_loss
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -267,11 +275,14 @@ def run_experiment(
     results: list[RunResult] = []
     trained_models: list[tuple[str, int, nn.Module]] = []
 
+    models_to_train = (
+        [(train_embedding_ae, "EmbeddingAE")]
+        if cfg.skip_sae
+        else [(train_sparse_ae, "SparseAE"), (train_embedding_ae, "EmbeddingAE")]
+    )
+
     for n_concepts in cfg.n_concepts_list:
-        for train_fn, label in (
-            (train_sparse_ae, "SparseAE"),
-            (train_embedding_ae, "EmbeddingAE"),
-        ):
+        for train_fn, label in models_to_train:
             print(f"-- {label} | n_concepts={n_concepts} --")
             model, result = train_fn(n_concepts, X_train, X_test, cfg, ds_cfg)
             trained_models.append((label, n_concepts, model))

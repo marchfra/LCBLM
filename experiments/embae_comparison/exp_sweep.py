@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from lcblm.utils import get_device
+
 from .exp_config import RunConfig
 from .exp_data import DATASET_REGISTRY
 
@@ -105,6 +107,9 @@ def parse_sweep_config(
         msg = f"Unknown dataset '{dataset_name}'. Available: {list(DATASET_REGISTRY)}"
         raise ValueError(msg)
     ds_cfg, _ = DATASET_REGISTRY[dataset_name]
+    if "n_samples" in raw:
+        from dataclasses import replace
+        ds_cfg = replace(ds_cfg, n_samples=raw.pop("n_samples"))
 
     # n_concepts_list is fixed (scalar list within each run)
     n_concepts_list = raw.pop("n_concepts_list", [5, 10, 20, 30, 50, 100])
@@ -130,7 +135,7 @@ def parse_sweep_config(
         axis_names = list(sweep_axes.keys())
         combinations = list(itertools.product(*sweep_axes.values()))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     seen: list[dict] = []
     run_cfgs: list[RunConfig] = []
     for combo in combinations:

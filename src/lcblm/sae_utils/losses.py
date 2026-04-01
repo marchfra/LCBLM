@@ -143,3 +143,41 @@ def bernoulli_kl_loss(logits: Tensor, target_p: float) -> Tensor:
     kl_div /= n_concepts**0.5
 
     return kl_div
+
+
+def bernoulli_kl_loss_from_probs(probs: Tensor, target_p: float) -> Tensor:
+    """Compute KL divergence from already-computed Bernoulli probabilities.
+
+    Same as :func:`bernoulli_kl_loss` but accepts probabilities in [0, 1] directly
+    instead of logits — no internal sigmoid is applied.  Use this when the caller
+    already has soft scores (e.g. GumbelSigmoid outputs) so that the empirical
+    activation rate is computed from the actual scores rather than re-derived from
+    pre-activation logits.
+
+    Args:
+        probs: Soft activation probabilities of shape (batch_size, n_concepts).
+            Each entry must be in [0, 1].
+        target_p: Target activation probability, must be in (0, 1) exclusive.
+
+    Returns:
+        Scalar KL divergence loss, normalised by sqrt(n_concepts).
+
+    """
+    if not (0 < target_p < 1):
+        msg = f"target_p must be in (0, 1) exclusive, got {target_p}"
+        raise ValueError(msg)
+
+    if probs.dim() < 2:  # noqa: PLR2004
+        msg = f"probs must have at least 2 dimensions (batch, concepts), got shape {probs.shape}"
+        raise ValueError(msg)
+
+    n_concepts = probs.shape[1]
+
+    p = probs.mean(dim=0)  # empirical activation rate per concept
+
+    first_term = (1 - p) * torch.log(clamp_positive(1 - p) / (1 - target_p))
+    second_term = p * torch.log(clamp_positive(p) / target_p)
+    kl_div = (first_term + second_term).sum()
+    kl_div /= n_concepts**0.5
+
+    return kl_div

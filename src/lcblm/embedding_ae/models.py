@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple
 
 import torch
+import torch.nn.functional as F  # noqa: N812
 from torch import Tensor, nn
 
 if TYPE_CHECKING:
@@ -69,6 +70,7 @@ class EmbeddingAE(nn.Module):
         scoring_module: TensorModule,
         *,
         decode_from_prototypes: bool = False,
+        normalize: bool = False,
     ) -> None:
         """Initialize an Embedding AutoEncoder.
 
@@ -81,6 +83,10 @@ class EmbeddingAE(nn.Module):
                 and prototypes to a score.
             decode_from_prototypes: Whether to reconstruct from computed embeddings or
                 from learned prototypes.
+            normalize: If True, L2-normalise encoder embeddings and prototypes before
+                computing alignment (cosine similarity instead of dot product). This
+                bounds alignments to [-1, 1] and prevents dead prototypes caused by
+                scale asymmetry between the embedding cloud and far-away prototypes.
 
         Raises:
             TypeError: if encoder is not a subclass of torch.nn.Module.
@@ -144,6 +150,7 @@ class EmbeddingAE(nn.Module):
         )
 
         self._decode_from_prototypes = decode_from_prototypes
+        self._normalize = normalize
 
     def encode(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         # Shape (batch_size, num_embeddings, embedding_size)
@@ -154,10 +161,16 @@ class EmbeddingAE(nn.Module):
         )
 
         # Shape (batch_size, num_embeddings)
-        # This computes the dot product between embedding i and prototype i, for each
-        # sample in the batch. The string is an equation that uses Einstein index
-        # notation, i.e., sum_{e=0}^{emb_size-1} embeds_{bne} * prots_{ne} = aligns_{bn}
-        alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
+        # Compute alignment between each encoder embedding and its prototype.
+        # With normalize=True this is cosine similarity (bounded to [-1, 1]),
+        # which prevents dead prototypes caused by scale asymmetry.
+        if self._normalize:
+            emb_for_align = F.normalize(embeddings, dim=-1)
+            proto_for_align = F.normalize(self.prototypes, dim=-1)
+        else:
+            emb_for_align = embeddings
+            proto_for_align = self.prototypes
+        alignments = torch.einsum("bne,ne->bn", emb_for_align, proto_for_align)
 
         # Shape (batch_size, num_embeddings)
         scores: Tensor = self.scoring_module(alignments)

@@ -12,6 +12,8 @@ from typing import Literal
 
 import torch
 
+from lcblm.utils import get_device
+
 
 @dataclass(frozen=True)
 class DatasetConfig:
@@ -64,6 +66,15 @@ class RunConfig:
         encoder_type: The encoder/decoder to use in EmbeddingAE. Must be "lin" or "mlp".
         decode_from_prototypes: Whether to decode from the EmbeddingAE prototypes of
             from computed embeddings.
+        lambda_reg: Coefficient for the prototype–embedding alignment loss. Penalises
+            the squared distance between each encoder embedding and its prototype,
+            weighted by the concept score, for active concepts only. 0.0 disables the
+            term.
+        normalize_embeddings: If True, L2-normalise encoder embeddings and prototypes
+            before computing alignment (cosine similarity). It might require mu to be tuned
+            accordingly.
+        skip_sae: If True, skip training SparseAE entirely. Useful for sweeps over
+            EmbeddingAE-only hyperparameters (e.g. lambda_reg, normalize_embeddings).
 
     """
 
@@ -80,13 +91,12 @@ class RunConfig:
     lambda_l1: float = 1e-2
     lambda_kl: float = 1e-2
     target_p: float = 0.05
+    lambda_reg: float = 0.0
+    normalize_embeddings: bool = False
+    skip_sae: bool = False
     embedding_size: int = 8
     batch_size: int = 128
     top_k_examples: int = 5
     max_concepts_in_dict: int = 20
     seed: int = 0
-    device: torch.device = field(
-        default_factory=lambda: torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu",
-        ),
-    )
+    device: torch.device = field(default_factory=get_device)

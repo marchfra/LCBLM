@@ -45,9 +45,23 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 
+from lcblm.utils import get_device
 from lcblm.utils.seed import set_seeds
 
 from .exp_config import DatasetConfig, RunConfig
+
+# ── Matplotlib style helpers ──────────────────────────────────────────────────
+_STYLES_DIR = Path(__file__).resolve().parents[2] / "mplstyles"
+_STYLE_NAMES = ["grid", "science", "notebook", "mylegend"]
+
+
+def _use_styles() -> None:
+    """Apply project mplstyles, resolving custom names to full paths."""
+    styles = [
+        str(_STYLES_DIR / f"{s}.mplstyle") if (_STYLES_DIR / f"{s}.mplstyle").exists() else s
+        for s in _STYLE_NAMES
+    ]
+    plt.style.use(styles)
 from .exp_data import DATASET_REGISTRY
 from .exp_io import load_results, save_config_json, save_results
 from .exp_plotting import (
@@ -69,7 +83,7 @@ def _load_run_config(raw: dict) -> RunConfig:
     filtered = {k: v for k, v in raw.items() if k in known}
     return RunConfig(
         **filtered,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        device=get_device(),
     )
 
 
@@ -141,9 +155,12 @@ def cmd_run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
+    if "n_samples" in raw:
+        from dataclasses import replace
+        ds_cfg = replace(ds_cfg, n_samples=raw["n_samples"])
     run_cfg = _load_run_config(raw)
 
-    plt.style.use(["grid", "science", "notebook", "mylegend"])
+    _use_styles()
     set_seeds(run_cfg.seed)
 
     print(f"Dataset : {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
@@ -214,7 +231,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
     results, run_cfg, ds_cfg = load_results(results_path)
     out_dir = results_path.parent  # plots go next to the results file
 
-    plt.style.use(["grid", "science", "notebook", "mylegend"])
+    _use_styles()
 
     print(f"Loaded {len(results)} run(s) from {results_path}")
     print(f"Dataset: {ds_cfg.name}")
@@ -321,7 +338,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     print(f"Dataset: {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
     print(f"Device:  {run_cfgs[0].device}\n")
 
-    plt.style.use(["grid", "science", "notebook", "mylegend"])
+    _use_styles()
 
     _, load_data = DATASET_REGISTRY[ds_cfg.name]
     X_train, X_test, _y_train, _y_test, scaler = load_data(ds_cfg.n_samples)

@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from lcblm.utils import get_device
+
 from .exp_config import DatasetConfig, RunConfig
 from .exp_training import RunResult
 
@@ -35,7 +37,7 @@ def _run_config_to_dict(cfg: RunConfig) -> dict:
 def _run_config_from_dict(d: dict) -> RunConfig:
     return RunConfig(
         **d,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        device=get_device(),
     )
 
 
