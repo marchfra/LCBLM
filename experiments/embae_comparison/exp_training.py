@@ -270,11 +270,14 @@ def run_experiment(
     results: list[RunResult] = []
     trained_models: list[tuple[str, int, nn.Module]] = []
 
+    models_to_train = (
+        [(train_embedding_ae, "EmbeddingAE")]
+        if cfg.skip_sae
+        else [(train_sparse_ae, "SparseAE"), (train_embedding_ae, "EmbeddingAE")]
+    )
+
     for n_concepts in cfg.n_concepts_list:
-        for train_fn, label in (
-            (train_sparse_ae, "SparseAE"),
-            (train_embedding_ae, "EmbeddingAE"),
-        ):
+        for train_fn, label in models_to_train:
             print(f"-- {label} | n_concepts={n_concepts} --")
             model, result = train_fn(n_concepts, X_train, X_test, cfg, ds_cfg)
             trained_models.append((label, n_concepts, model))
