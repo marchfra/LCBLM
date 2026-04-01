@@ -67,6 +67,10 @@ class RunConfig:
         encoder_type: The encoder/decoder to use in EmbeddingAE. Must be "lin" or "mlp".
         decode_from_prototypes: Whether to decode from the EmbeddingAE prototypes of
             from computed embeddings.
+        lambda_reg: Coefficient for the prototype-embedding alignment loss. Penalises
+            the squared distance between each encoder embedding and its prototype,
+            weighted by the concept score, for active concepts only. 0.0 disables the
+            term.
         skip_sae: If True, skip training SparseAE entirely. Useful for sweeps over
             EmbeddingAE-only hyperparameters (e.g. lambda_reg, normalize_embeddings).
 
@@ -85,6 +89,7 @@ class RunConfig:
     lambda_l1: float = 1e-2
     lambda_kl: float = 1e-2
     target_p: float = 0.05
+    lambda_reg: float = 0.0
     skip_sae: bool = False
     embedding_size: int = 8
     batch_size: int = 128

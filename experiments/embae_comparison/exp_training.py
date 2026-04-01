@@ -221,6 +221,16 @@ def train_embedding_ae(
                 msg = "Invalid sparsity mode"
                 raise ValueError(msg)
             loss = recon_loss + sparsity_loss
+            if cfg.lambda_reg > 0.0:
+                # Penalise distance between encoder embeddings and prototypes,
+                # weighted by concept scores so only active concepts are pulled.
+                # embeddings: (batch, n_concepts, embed_size)
+                # prototypes: (n_concepts, embed_size)
+                diff = out.embeddings - model.prototypes.unsqueeze(0)
+                reg_loss = (
+                    cfg.lambda_reg * (diff.pow(2).sum(dim=-1) * out.scores).mean()
+                )
+                loss = loss + reg_loss
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
