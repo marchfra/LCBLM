@@ -25,13 +25,14 @@ This produces 2 x 2 x 2 = 8 runs.
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
 from lcblm.utils import get_device
 
 try:
     import tomllib
 except ModuleNotFoundError:
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # ty:ignore[unresolved-import]
 
 import itertools
 import json
@@ -105,6 +106,9 @@ def parse_sweep_config(
         msg = f"Unknown dataset '{dataset_name}'. Available: {list(DATASET_REGISTRY)}"
         raise ValueError(msg)
     ds_cfg, _ = DATASET_REGISTRY[dataset_name]
+    if "n_samples" in raw:
+        # Override default n_samples with value from config
+        ds_cfg = replace(ds_cfg, n_samples=raw.pop("n_samples"))
 
     # n_concepts_list is fixed (scalar list within each run)
     n_concepts_list = raw.pop("n_concepts_list", [5, 10, 20, 30, 50, 100])

@@ -27,6 +27,7 @@ import pickle
 import shutil
 import sys
 import time
+from dataclasses import replace
 from datetime import timedelta
 
 from lcblm.utils import get_device
@@ -139,6 +140,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
+    if "n_samples" in raw:
+        ds_cfg = replace(ds_cfg, n_samples=raw.pop("n_samples"))
     run_cfg = _load_run_config(raw)
 
     set_seeds(run_cfg.seed)
@@ -340,8 +343,6 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     print(f"Train: {X_train.shape}  Test: {X_test.shape}\n")
 
     for i, run_cfg in enumerate(run_cfgs, 1):
-        print(f"{run_cfg.device = }")
-
         start_time = time.time()
 
         # Check for existing identical run
