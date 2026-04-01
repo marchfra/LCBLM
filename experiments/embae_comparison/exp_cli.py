@@ -365,7 +365,12 @@ def cmd_sweep(args: argparse.Namespace) -> None:
             pickle.dump(scaler, f)
         print(f"Saved scaler to {_scaler_path(out_dir).name}")
 
-        results, trained_models = run_experiment(X_train, X_test, run_cfg, ds_cfg)
+        results, trained_models = run_experiment(
+            X_train.to(run_cfg.device),
+            X_test,
+            run_cfg,
+            ds_cfg,
+        )
 
         save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
         for model_name, n_concepts, model in trained_models:
