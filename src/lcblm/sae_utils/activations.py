@@ -247,16 +247,3 @@ class GumbelSigmoid(Module):
 
     def __call__(self, x: Tensor) -> Tensor:
         return super().__call__(x)
-
-
-def bernoulli_hard_sample(logit_p: Tensor) -> Tensor:
-    """Hard Bernoulli samples from logits (deterministic, for inference).
-
-    Args:
-        logit_p: Logits for each Bernoulli decision.
-
-    Returns:
-        Hard binary samples (0 or 1).
-
-    """
-    return (logit_p > 0).float()
