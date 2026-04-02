@@ -193,7 +193,10 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
             ax.axvline(align_vals[~is_active].mean(), color="navy", ls="--", lw=1.5)
 
         n_act = int(is_active.sum())
-        ax.set_title(f"C{concept_i}  (n_active={n_act})", fontsize=9)
+        ax.set_title(
+            f"C{concept_i}, n_active={n_act} ({n_act / len(is_active):.2%})",
+            fontsize=9,
+        )
         if plot_i == 0:
             ax.legend(fontsize=8)
         ax.set_xlabel("⟨emb_i, proto_i⟩", fontsize=8)
