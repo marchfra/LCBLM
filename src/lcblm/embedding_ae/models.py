@@ -171,8 +171,11 @@ class EmbeddingAE(nn.Module):
         # notation, i.e., sum_{e=0}^{emb_size-1} embeds_{bne} * prots_{ne} = aligns_{bn}
         alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
 
+        # TODO: fully deprecate scoring module
+
         # Shape (batch_size, num_embeddings)
-        scores: Tensor = self.scoring_module(alignments)
+        # scores: Tensor = self.scoring_module(alignments)
+        scores = (alignments + 1) / 2  # map cosine similarity alignments to [0, 1]
 
         return embeddings, scores, alignments
 
