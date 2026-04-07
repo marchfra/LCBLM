@@ -17,7 +17,7 @@ from tqdm.auto import trange
 from lcblm.embedding_ae import EmbeddingAE
 from lcblm.embedding_ae.models import MLP
 from lcblm.sae_utils import SparseAE
-from lcblm.sae_utils.activations import GumbelSigmoid
+from lcblm.sae_utils.activations import GumbelSigmoid, SigmoidCosineScoring
 from lcblm.sae_utils.dataset import compute_tied_bias
 from lcblm.sae_utils.losses import (
     bernoulli_kl_loss_from_logits,
@@ -64,12 +64,15 @@ def build_embedding_ae(
         msg = "Invalid encoder type"
         raise ValueError(msg)
 
+    scoring_module = GumbelSigmoid(tau=cfg.tau, mu=cfg.mu)
+    scoring_module = SigmoidCosineScoring(tau=cfg.tau, mu=cfg.mu)
+
     return EmbeddingAE(
         num_embeddings=n_concepts,
         embedding_size=cfg.embedding_size,
         encoder=encoder,
         decoder=decoder,
-        scoring_module=GumbelSigmoid(tau=cfg.tau, mu=cfg.mu),
+        scoring_module=scoring_module,
         decode_from_prototypes=cfg.decode_from_prototypes,
     ).to(cfg.device)
 
