@@ -345,11 +345,12 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     for i, run_cfg in enumerate(run_cfgs, 1):
         start_time = time.time()
 
-        # Check for existing identical run
-        existing = index.find_existing(run_cfg, ds_cfg)
-        if existing is not None:
-            print(f"[{i}/{len(run_cfgs)}] Skipping — identical to {existing}")
-            continue
+        if not args.force_rerun:
+            # Check for existing identical run
+            existing = index.find_existing(run_cfg, ds_cfg)
+            if existing is not None:
+                print(f"[{i}/{len(run_cfgs)}] Skipping — identical to {existing}")
+                continue
 
         run_id = index.next_run_id()
         out_dir = base_dir / run_id
@@ -494,6 +495,13 @@ def main() -> None:
         type=str,
         default="",
         help="Path to the output directory.",
+    )
+    sweep_p.add_argument(
+        "--force-rerun",
+        "-f",
+        action="store_true",
+        default=False,
+        help="Run experiment even if the same experiment has been previously run.",
     )
 
     args = parser.parse_args()
