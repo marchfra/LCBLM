@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor
-from torch.nn import Module
+from torch.nn import Module, Parameter
 
 from lcblm.utils import clamp_0_1
 
@@ -238,12 +238,57 @@ def gumbel_sigmoid(
 
 class GumbelSigmoid(Module):
     def __init__(self, tau: float = 1.0, mu: float = 0.0) -> None:
+        if tau <= 0:
+            msg = "tau must be strictly positive"
+            raise ValueError(msg)
+
         super().__init__()
         self.tau = tau
         self.mu = mu
 
     def forward(self, x: Tensor) -> Tensor:
         return gumbel_sigmoid(x, tau=self.tau, mu=self.mu, hard=not self.training)
+
+    def __call__(self, x: Tensor) -> Tensor:
+        return super().__call__(x)
+
+
+class LinearCosineScoring(Module):
+    def forward(self, cosine_alignments: Tensor) -> Tensor:
+        # Map cosine similarity alignments to [0, 1]
+        scores = (cosine_alignments + 1) / 2
+        return scores
+
+    def __call__(self, x: Tensor) -> Tensor:
+        return super().__call__(x)
+
+
+class SigmoidCosineScoring(Module):
+    def __init__(
+        self,
+        tau: float = 1.0,
+        mu: float = 0.0,
+        *,
+        learnable_tau: bool = False,
+        learnable_mu: bool = False,
+    ) -> None:
+        if tau <= 0:
+            msg = "tau must be strictly positive"
+            raise ValueError(msg)
+
+        super().__init__()
+        if learnable_tau:
+            self.tau = Parameter(torch.tensor(tau))
+        else:
+            self.tau = tau
+
+        if learnable_mu:
+            self.mu = Parameter(torch.tensor(mu))
+        else:
+            self.mu = mu
+
+    def forward(self, cosine_alignments: Tensor) -> Tensor:
+        return torch.sigmoid((cosine_alignments + self.mu) / self.tau)
 
     def __call__(self, x: Tensor) -> Tensor:
         return super().__call__(x)
