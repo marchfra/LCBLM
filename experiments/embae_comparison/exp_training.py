@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
+import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from torch import Tensor, nn, optim
@@ -178,6 +180,28 @@ def train_sparse_ae(
     return model, result
 
 
+T = TypeVar("T", int, float, torch.Tensor, np.ndarray)
+
+
+class CosineAnnealing:
+    def __init__(self, num_epochs: int, start_value: T, end_value: T) -> None:
+        if num_epochs <= 0:
+            msg = "num_epochs must be strictly positive."
+            raise ValueError(msg)
+
+        self.num_epochs = num_epochs - 1
+        self.start_value = start_value
+        self.end_value = end_value
+
+    def get_value(self, epoch: int) -> T:
+        return self.end_value + 0.5 * (self.start_value - self.end_value) * (
+            1 + math.cos(epoch * math.pi / self.num_epochs)
+        )  # ty:ignore[invalid-return-type]
+
+    def __call__(self, epoch: int) -> T:
+        return self.get_value(epoch)
+
+
 def train_embedding_ae(
     n_concepts: int,
     X_train: Tensor,
@@ -201,16 +225,18 @@ def train_embedding_ae(
     model = build_embedding_ae(n_concepts, cfg, ds_cfg)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    tau_scheduler = CosineAnnealing(cfg.epochs, cfg.tau, 0.2)
     loader = _make_loader(X_train, cfg.batch_size)
     result = RunResult(model_name="EmbeddingAE", n_concepts=n_concepts)
     X_test_d = X_test.to(cfg.device)
     best_state: dict = {}
 
-    for _epoch in trange(cfg.epochs, unit="epoch"):
+    for epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_recon = 0.0
         for (xb,) in loader:
             # xb = xb.to(cfg.device)
+            model.scoring_module.tau = tau_scheduler(epoch)
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
             if cfg.sparsity_mode == "l1":
