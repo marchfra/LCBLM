@@ -61,15 +61,13 @@ class EmbeddingAE(nn.Module):
         alignments: Tensor
         recon: Tensor
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         num_embeddings: int,
         embedding_size: int,
         encoder: ShapedTensorModule,
         decoder: ShapedTensorModule,
         scoring_module: TensorModule,
-        *,
-        decode_from_prototypes: bool = False,
     ) -> None:
         """Initialize an Embedding AutoEncoder.
 
@@ -80,8 +78,6 @@ class EmbeddingAE(nn.Module):
             decoder: Module mapping num_embeddings * embedding_size -> input_dim.
             scoring_module: The Module to convert cosine alignment between embeddings
                 and prototypes to a score.
-            decode_from_prototypes: Whether to reconstruct from computed embeddings or
-                from learned prototypes.
 
         Raises:
             TypeError: if encoder is not a subclass of torch.nn.Module.
@@ -144,8 +140,6 @@ class EmbeddingAE(nn.Module):
             torch.randn(self.num_embeddings, self.embedding_size),
         )
 
-        self._decode_from_prototypes = decode_from_prototypes
-
     @property
     def device(self) -> torch.device:
         """Get the device of the parameters."""
@@ -186,10 +180,7 @@ class EmbeddingAE(nn.Module):
 
     def forward(self, x: Tensor) -> Output:
         embeddings, scores, alignments = self.encode(x)
-        if self._decode_from_prototypes:
-            recon = self.decode(self.prototypes, scores)
-        else:
-            recon = self.decode(embeddings, scores)
+        recon = self.decode(embeddings, scores)
 
         return self.Output(
             embeddings=embeddings,
@@ -200,3 +191,25 @@ class EmbeddingAE(nn.Module):
 
     def __call__(self, x: Tensor) -> Output:
         return super().__call__(x)
+
+
+class PrototypeEmbeddingAE(EmbeddingAE):
+    """EmbeddingAE that reconstructs from learned prototypes.
+
+    The decoder receives only the prototypes weighted by their scores, so
+    the reconstruction depends on which concepts are active but not on the
+    specific encoder embedding for this input. This enforces a stronger
+    bottleneck: the prototype must carry all reconstructable information.
+    """
+
+    def forward(self, x: Tensor) -> EmbeddingAE.Output:
+        embeddings, scores, alignments = self.encode(x)
+        recon = self._decoder(
+            (self.prototypes * scores.unsqueeze(-1)).flatten(start_dim=1),
+        )
+        return self.Output(
+            embeddings=embeddings,
+            scores=scores,
+            alignments=alignments,
+            recon=recon,
+        )
