@@ -29,6 +29,8 @@ from lcblm.typing import TypedLinear
 from .exp_metrics import l0_embedding, l0_sparse
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .exp_config import DatasetConfig, RunConfig
 
 
@@ -78,6 +80,73 @@ def build_embedding_ae(
     ).to(cfg.device)
 
 
+def _make_sparse_ae_loss_terms(
+    cfg: RunConfig,
+) -> list[Callable[[SparseAE.Output], Tensor]]:
+    """Construct auxiliary loss callables for SparseAE.
+
+    Returns a list of callables each taking a SparseAE.Output and returning
+    a scalar tensor. The training loop sums them with the reconstruction loss,
+    with no branching at call time.
+    """
+    if cfg.sparsity_mode == "l1":
+        return [lambda out: cfg.lambda_l1 * out.latents.abs().mean()]
+
+    if cfg.sparsity_mode == "kl":
+        return [
+            lambda out: (
+                cfg.lambda_kl
+                * bernoulli_kl_loss_from_logits(
+                    out.latents_pre_activation,
+                    cfg.target_p,
+                )
+            ),
+        ]
+
+    msg = "Unexpected sparsity mode."
+    raise ValueError(msg)
+
+
+def _make_embedding_ae_loss_terms(
+    model: EmbeddingAE,
+    cfg: RunConfig,
+) -> list[Callable[[EmbeddingAE.Output], Tensor]]:
+    """Construct auxiliary loss callables for EmbeddingAE.
+
+    Returns a list of callables each taking an EmbeddingAE.Output and
+    returning a scalar tensor. Adding a new loss term means appending one
+    callable here - the training loop requires no changes.
+    """
+    terms: list[Callable[[EmbeddingAE.Output], Tensor]] = []
+
+    if cfg.sparsity_mode == "l1":
+        terms.append(lambda out: cfg.lambda_l1 * out.scores.abs().mean())
+    elif cfg.sparsity_mode == "kl":
+        terms.append(
+            lambda out: (
+                cfg.lambda_kl * bernoulli_kl_loss_from_probs(out.scores, cfg.target_p)
+            ),
+        )
+    else:
+        msg = "Unexpected sparsity mode."
+        raise ValueError(msg)
+
+    if cfg.lambda_reg > 0.0:
+        # Penalise distance between encoder embeddings and prototypes,
+        # weighted by concept scores so only active concepts are pulled.
+        terms.append(
+            lambda out: (
+                cfg.lambda_reg
+                * (
+                    (out.embeddings - model.prototypes.unsqueeze(0)).pow(2).sum(dim=-1)
+                    * out.scores
+                ).mean()
+            ),
+        )
+
+    return terms
+
+
 @dataclass
 class RunResult:
     """Recorded metrics for a single (model, n_concepts) training run.
@@ -125,6 +194,7 @@ def train_sparse_ae(
 
     """
     model = build_sparse_ae(n_concepts, cfg, ds_cfg)
+    loss_terms = _make_sparse_ae_loss_terms(cfg)
 
     geom_median = compute_tied_bias(X_train.cpu(), 1)
     model.init_tied_bias(geom_median)
@@ -142,17 +212,7 @@ def train_sparse_ae(
             # xb = xb.to(cfg.device)
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
-            if cfg.sparsity_mode == "l1":
-                sparsity_loss = cfg.lambda_l1 * out.latents.abs().mean()
-            elif cfg.sparsity_mode == "kl":
-                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss_from_logits(
-                    out.latents_pre_activation,
-                    cfg.target_p,
-                )
-            else:
-                msg = "Invalid sparsity mode"
-                raise ValueError(msg)
-            loss = recon_loss + sparsity_loss
+            loss = recon_loss + sum(term(out) for term in loss_terms)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -222,6 +282,7 @@ def train_embedding_ae(
 
     """
     model = build_embedding_ae(n_concepts, cfg, ds_cfg)
+    loss_terms = _make_embedding_ae_loss_terms(model, cfg)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     tau_scheduler = CosineAnnealing(cfg.epochs, cfg.tau, 0.2)
@@ -238,27 +299,7 @@ def train_embedding_ae(
             model.scoring_module.tau = tau_scheduler(epoch)
             out = model(xb)
             recon_loss = F.mse_loss(out.recon, xb)
-            if cfg.sparsity_mode == "l1":
-                sparsity_loss = cfg.lambda_l1 * out.scores.abs().mean()
-            elif cfg.sparsity_mode == "kl":
-                sparsity_loss = cfg.lambda_kl * bernoulli_kl_loss_from_probs(
-                    out.scores,
-                    cfg.target_p,
-                )
-            else:
-                msg = "Invalid sparsity mode"
-                raise ValueError(msg)
-            loss = recon_loss + sparsity_loss
-            if cfg.lambda_reg > 0.0:
-                # Penalise distance between encoder embeddings and prototypes,
-                # weighted by concept scores so only active concepts are pulled.
-                # embeddings: (batch, n_concepts, embed_size)
-                # prototypes: (n_concepts, embed_size)
-                diff = out.embeddings - model.prototypes.unsqueeze(0)
-                reg_loss = (
-                    cfg.lambda_reg * (diff.pow(2).sum(dim=-1) * out.scores).mean()
-                )
-                loss = loss + reg_loss
+            loss = recon_loss + sum(term(out) for term in loss_terms)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
