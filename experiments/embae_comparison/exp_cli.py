@@ -50,7 +50,7 @@ from torch import nn
 from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
 
-from .exp_config import DatasetConfig, RunConfig
+from .exp_config import DatasetConfig, RunConfig, SparsityMode
 from .exp_data import DATASET_REGISTRY
 from .exp_io import load_results, save_config_json, save_results
 from .exp_plotting import (
@@ -85,11 +85,14 @@ def _load_run_config(raw: dict) -> RunConfig:
 
 
 def _out_dir(base_dir: Path, ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
-    if run_cfg.sparsity_mode == "l1":
-        sparsity_dir = Path("l1") / f"lambda_l1_{run_cfg.lambda_l1:.0e}"
-    else:
+    sparsity_dir = Path(run_cfg.sparsity_mode)
+    if run_cfg.sparsity_mode == SparsityMode.L1:
+        sparsity_dir /= f"lambda_l1_{run_cfg.lambda_l1:.0e}"
+    elif run_cfg.sparsity_mode == SparsityMode.KL:
         sparsity_dir = (
-            Path("kl") / f"p_{run_cfg.target_p}" / f"lambda_kl_{run_cfg.lambda_kl:.0e}"
+            sparsity_dir
+            / f"p_{run_cfg.target_p}"
+            / f"lambda_kl_{run_cfg.lambda_kl:.0e}"
         )
     p = (
         base_dir

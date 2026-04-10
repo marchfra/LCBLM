@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .exp_config import SparsityMode
 from .exp_data import denormalize
 
 if TYPE_CHECKING:
@@ -110,9 +111,9 @@ def plot_l0_recon(
     ax.set_xlabel("$L_0$")
     ax.set_ylabel("Recon MSE")
 
-    if cfg.sparsity_mode == "l1":
+    if cfg.sparsity_mode == SparsityMode.L1:
         sparsity_label = r"$\lambda_{L_1}=$" + f"${cfg.lambda_l1}$"
-    else:
+    elif cfg.sparsity_mode == SparsityMode.KL:
         sparsity_label = r"$\lambda_{KL}=$" + f"${cfg.lambda_kl}$, $p^*={cfg.target_p}$"
 
     ax.set_title(

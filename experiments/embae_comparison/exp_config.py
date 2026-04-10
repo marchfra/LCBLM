@@ -8,12 +8,23 @@ they can be safely passed around without risk of accidental mutation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from enum import StrEnum, auto
+from typing import TYPE_CHECKING
 
 from lcblm.utils import get_device
 
 if TYPE_CHECKING:
     import torch
+
+
+class EncoderType(StrEnum):
+    MLP = auto()
+    LIN = auto()
+
+
+class SparsityMode(StrEnum):
+    L1 = auto()
+    KL = auto()
 
 
 @dataclass(frozen=True)
@@ -78,7 +89,7 @@ class RunConfig:
 
     epochs: int
     lr: float
-    encoder_type: Literal["lin", "mlp"] = "mlp"
+    encoder_type: EncoderType = EncoderType.MLP
     decode_from_prototypes: bool = False
     n_concepts_list: list[int] = field(
         default_factory=lambda: [5, 10, 20, 30, 50, 100],
@@ -86,7 +97,7 @@ class RunConfig:
     start_tau: float = 1.0
     end_tau: float = -1
     mu: float = 0.0
-    sparsity_mode: Literal["l1", "kl"] = "l1"
+    sparsity_mode: SparsityMode = SparsityMode.L1
     lambda_l1: float = 1e-2
     lambda_kl: float = 1e-2
     target_p: float = 0.05
@@ -100,5 +111,8 @@ class RunConfig:
     device: torch.device = field(default_factory=get_device)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "sparsity_mode", SparsityMode(self.sparsity_mode))
+        object.__setattr__(self, "encoder_type", SparsityMode(self.encoder_type))
+
         if self.end_tau == -1:
             object.__setattr__(self, "end_tau", self.start_tau)

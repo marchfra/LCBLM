@@ -26,6 +26,7 @@ from lcblm.sae_utils.losses import (
 )
 from lcblm.typing import TypedLinear
 
+from .exp_config import EncoderType, SparsityMode
 from .exp_metrics import l0_embedding, l0_sparse
 
 if TYPE_CHECKING:
@@ -49,7 +50,7 @@ def build_embedding_ae(
     cfg: RunConfig,
     ds_cfg: DatasetConfig,
 ) -> EmbeddingAE:
-    if cfg.encoder_type == "mlp":
+    if cfg.encoder_type == EncoderType.MLP:
         encoder = MLP(
             ds_cfg.input_dim,
             cfg.embedding_size * n_concepts,
@@ -60,12 +61,9 @@ def build_embedding_ae(
             cfg.embedding_size * n_concepts,
             ds_cfg.input_dim,
         )
-    elif cfg.encoder_type == "lin":
+    elif cfg.encoder_type == EncoderType.LIN:
         encoder = TypedLinear(ds_cfg.input_dim, cfg.embedding_size * n_concepts)
         decoder = TypedLinear(cfg.embedding_size * n_concepts, ds_cfg.input_dim)
-    else:
-        msg = "Invalid encoder type"
-        raise ValueError(msg)
 
     _scoring_module = GumbelSigmoid(tau=cfg.start_tau, mu=cfg.mu)
     scoring_module = SigmoidCosineScoring(tau=cfg.start_tau, mu=cfg.mu)
@@ -89,10 +87,10 @@ def _make_sparse_ae_loss_terms(
     a scalar tensor. The training loop sums them with the reconstruction loss,
     with no branching at call time.
     """
-    if cfg.sparsity_mode == "l1":
+    if cfg.sparsity_mode == SparsityMode.L1:
         return [lambda out: cfg.lambda_l1 * out.latents.abs().mean()]
 
-    if cfg.sparsity_mode == "kl":
+    if cfg.sparsity_mode == SparsityMode.KL:
         return [
             lambda out: (
                 cfg.lambda_kl
@@ -119,9 +117,9 @@ def _make_embedding_ae_loss_terms(
     """
     terms: list[Callable[[EmbeddingAE.Output], Tensor]] = []
 
-    if cfg.sparsity_mode == "l1":
+    if cfg.sparsity_mode == SparsityMode.L1:
         terms.append(lambda out: cfg.lambda_l1 * out.scores.abs().mean())
-    elif cfg.sparsity_mode == "kl":
+    elif cfg.sparsity_mode == SparsityMode.KL:
         terms.append(
             lambda out: (
                 cfg.lambda_kl * bernoulli_kl_loss_from_probs(out.scores, cfg.target_p)

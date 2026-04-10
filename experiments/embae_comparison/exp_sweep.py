@@ -39,7 +39,7 @@ import json
 from dataclasses import asdict as _asdict
 from typing import TYPE_CHECKING
 
-from .exp_config import RunConfig
+from .exp_config import RunConfig, SparsityMode
 from .exp_data import DATASET_REGISTRY
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ def _canonical_run_config_from_dict(entry: dict) -> dict:
     """
     d = copy.deepcopy(entry)
     rc = d["run_config"]
-    if rc.get("sparsity_mode") == "l1":
+    if rc.get("sparsity_mode") == SparsityMode.L1:
         rc.pop("lambda_kl", None)
         rc.pop("target_p", None)
     else:
