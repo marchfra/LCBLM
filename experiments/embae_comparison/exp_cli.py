@@ -241,7 +241,7 @@ def cmd_plot(args: argparse.Namespace) -> None:
         print(f"\nAll done — outputs in {out_dir}")
         return
 
-    # Concept dictionaries need activations → reload data and model checkpoints
+    # Concept dictionaries need activations -> reload data and model checkpoints
     if ds_cfg.name not in DATASET_REGISTRY:
         print(
             f"Warning: dataset '{ds_cfg.name}' not in registry; "
@@ -446,15 +446,15 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    run_p = sub.add_parser("run", help="Train models from a TOML config file.")
-    run_p.add_argument("config", help="Path to the run config TOML file.")
-    run_p.add_argument(
+    run_parser = sub.add_parser("run", help="Train models from a TOML config file.")
+    run_parser.add_argument("config", help="Path to the run config TOML file.")
+    run_parser.add_argument(
         "--no-plots",
         action="store_true",
         default=False,
         help="Skip all plots.",
     )
-    run_p.add_argument(
+    run_parser.add_argument(
         "--out-dir",
         "-o",
         type=str,
@@ -462,41 +462,44 @@ def main() -> None:
         help="Path to the output directory.",
     )
 
-    plot_p = sub.add_parser("plot", help="Regenerate plots from a saved results JSON.")
-    plot_p.add_argument("results", help="Path to the results JSON file.")
-    plot_p.add_argument(
+    plot_parser = sub.add_parser(
+        "plot",
+        help="Regenerate plots from a saved results JSON.",
+    )
+    plot_parser.add_argument("results", help="Path to the results JSON file.")
+    plot_parser.add_argument(
         "--mplstyles",
         "-mpls",
         type=str,
         default="mplstyles",
-        help="Path to the matplotlib stylesheet.",
+        help="Path to the matplotlib stylesheet folder.",
     )
-    plot_p.add_argument(
+    plot_parser.add_argument(
         "--no-concept-dicts",
         action="store_true",
         default=False,
         help="Skip concept dictionary plots (avoids loading checkpoints and data).",
     )
 
-    sweep_p = sub.add_parser(
+    sweep_parser = sub.add_parser(
         "sweep",
         help="Run a cartesian product sweep from a sweep config.",
     )
-    sweep_p.add_argument("config", help="Path to the sweep config TOML file.")
-    sweep_p.add_argument(
+    sweep_parser.add_argument("config", help="Path to the sweep config TOML file.")
+    sweep_parser.add_argument(
         "--no-plots",
         action="store_true",
         default=False,
         help="Skip all plots.",
     )
-    sweep_p.add_argument(
+    sweep_parser.add_argument(
         "--out-dir",
         "-o",
         type=str,
         default="",
         help="Path to the output directory.",
     )
-    sweep_p.add_argument(
+    sweep_parser.add_argument(
         "--force-rerun",
         "-f",
         action="store_true",
