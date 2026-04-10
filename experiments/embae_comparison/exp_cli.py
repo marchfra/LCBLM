@@ -130,14 +130,13 @@ def cmd_run(args: argparse.Namespace) -> None:
     with config_path.open("rb") as f:
         raw = tomllib.load(f)
 
-    dataset_name: str = raw.get("dataset", "")
+    dataset_name: str = raw.pop("dataset", "")
     if dataset_name not in DATASET_REGISTRY:
-        print(
-            f"Error: unknown dataset '{dataset_name}'. "
-            f"Available: {list(DATASET_REGISTRY)}",
-            file=sys.stderr,
+        msg = (
+            f"Unknown dataset '{dataset_name}'. "
+            f"Available datasets: {list(DATASET_REGISTRY)}",
         )
-        sys.exit(1)
+        raise ValueError(msg)
 
     ds_cfg, load_data = DATASET_REGISTRY[dataset_name]
     if "n_samples" in raw:
