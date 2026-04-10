@@ -83,7 +83,8 @@ class RunConfig:
     n_concepts_list: list[int] = field(
         default_factory=lambda: [5, 10, 20, 30, 50, 100],
     )
-    tau: float = 1.0
+    start_tau: float = 1.0
+    end_tau: float = -1
     mu: float = 0.0
     sparsity_mode: Literal["l1", "kl"] = "l1"
     lambda_l1: float = 1e-2
@@ -97,3 +98,7 @@ class RunConfig:
     max_concepts_in_dict: int = 20
     seed: int = 0
     device: torch.device = field(default_factory=get_device)
+
+    def __post_init__(self) -> None:
+        if self.end_tau == -1:
+            object.__setattr__(self, "end_tau", self.start_tau)

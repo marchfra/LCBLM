@@ -67,8 +67,8 @@ def build_embedding_ae(
         msg = "Invalid encoder type"
         raise ValueError(msg)
 
-    _scoring_module = GumbelSigmoid(tau=cfg.tau, mu=cfg.mu)
-    scoring_module = SigmoidCosineScoring(tau=cfg.tau, mu=cfg.mu)
+    _scoring_module = GumbelSigmoid(tau=cfg.start_tau, mu=cfg.mu)
+    scoring_module = SigmoidCosineScoring(tau=cfg.start_tau, mu=cfg.mu)
 
     cls = PrototypeEmbeddingAE if cfg.decode_from_prototypes else EmbeddingAE
     return cls(
@@ -285,7 +285,7 @@ def train_embedding_ae(
     loss_terms = _make_embedding_ae_loss_terms(model, cfg)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
-    tau_scheduler = CosineAnnealing(cfg.epochs, cfg.tau, 0.2)
+    tau_scheduler = CosineAnnealing(cfg.epochs, cfg.start_tau, cfg.end_tau)
     loader = _make_loader(X_train, cfg.batch_size)
     result = RunResult(model_name="EmbeddingAE", n_concepts=n_concepts)
     X_test_d = X_test.to(cfg.device)

@@ -68,8 +68,19 @@ from .exp_sweep import RunIndex, parse_sweep_config
 
 def _load_run_config(raw: dict) -> RunConfig:
     """Build a RunConfig from a config-file dict, ignoring unknown keys."""
+    if "tau" in raw:
+        if "start_tau" in raw:
+            print("Warning: both tau and start_tau are given; using start_tau value.")
+            raw.pop("tau")
+        else:
+            raw["start_tau"] = raw.pop("tau")
+
     known = set(RunConfig.__dataclass_fields__)
     filtered = {k: v for k, v in raw.items() if k in known}
+    others = {k: v for k, v in raw.items() if k not in known}
+    if not all(k[0] == "_" for k in others):
+        msg = f"All comment keys should start with an underscore. Non-comment keys: {known}"  # noqa: E501
+        raise ValueError(msg)
     return RunConfig(**filtered, device=get_device())
 
 
@@ -84,7 +95,7 @@ def _out_dir(base_dir: Path, ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
         base_dir
         / ds_cfg.name
         / sparsity_dir
-        / f"tau_{run_cfg.tau:.0e}"
+        / f"tau_{run_cfg.start_tau:.0e}-{run_cfg.end_tau:.0e}"
         / f"mu_{run_cfg.mu:.0e}"
     )
     shutil.rmtree(p, ignore_errors=True)
