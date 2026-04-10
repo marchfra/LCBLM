@@ -15,6 +15,8 @@ from lcblm.utils import get_device
 if TYPE_CHECKING:
     import torch
 
+from lcblm.utils import get_device
+
 
 @dataclass(frozen=True)
 class DatasetConfig:
@@ -65,8 +67,9 @@ class RunConfig:
         seed: Global random seed.
         device: Torch device to train on.
         encoder_type: The encoder/decoder to use in EmbeddingAE. Must be "lin" or "mlp".
-        decode_from_prototypes: Whether to decode from the EmbeddingAE prototypes of
-            from computed embeddings.
+        decode_mode: Decoder input for EmbeddingAE. "embeddings" uses score-weighted
+            encoder embeddings, "prototypes" uses score-weighted prototypes, and
+            "convex" uses the score-interpolated prototype/embedding combination.
         lambda_reg: Coefficient for the prototype-embedding alignment loss. Penalises
             the squared distance between each encoder embedding and its prototype,
             weighted by the concept score, for active concepts only. 0.0 disables the
@@ -79,7 +82,7 @@ class RunConfig:
     epochs: int
     lr: float
     encoder_type: Literal["lin", "mlp"] = "mlp"
-    decode_from_prototypes: bool = False
+    decode_mode: Literal["embeddings", "prototypes", "convex"] = "embeddings"
     n_concepts_list: list[int] = field(
         default_factory=lambda: [5, 10, 20, 30, 50, 100],
     )
@@ -90,6 +93,7 @@ class RunConfig:
     lambda_kl: float = 1e-2
     target_p: float = 0.05
     lambda_reg: float = 0.0
+    skip_embedding: bool = False
     skip_sae: bool = False
     embedding_size: int = 8
     batch_size: int = 128

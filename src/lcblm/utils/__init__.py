@@ -1,5 +1,5 @@
-from .memory import free_gpu_memory
 from .pytorch import clamp_0_1, clamp_positive, get_device
+from .memory import free_gpu_memory
 from .seed import set_seeds
 
 __all__ = [

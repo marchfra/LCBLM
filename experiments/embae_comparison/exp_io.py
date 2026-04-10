@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 from lcblm.utils import get_device
 
+from lcblm.utils import get_device
+
 from .exp_config import DatasetConfig, RunConfig
 from .exp_training import RunResult
 

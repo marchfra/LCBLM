@@ -69,7 +69,8 @@ class EmbeddingAE(nn.Module):
         decoder: ShapedTensorModule,
         scoring_module: TensorModule,
         *,
-        decode_from_prototypes: bool = False,
+        decode_mode: str = "embeddings",
+        normalize: bool = False,
     ) -> None:
         """Initialize an Embedding AutoEncoder.
 
@@ -80,8 +81,14 @@ class EmbeddingAE(nn.Module):
             decoder: Module mapping num_embeddings * embedding_size -> input_dim.
             scoring_module: The Module to convert cosine alignment between embeddings
                 and prototypes to a score.
-            decode_from_prototypes: Whether to reconstruct from computed embeddings or
-                from learned prototypes.
+            decode_mode: How to build the decoder input. "embeddings" decodes from
+                score-weighted encoder embeddings, "prototypes" decodes from
+                score-weighted prototypes, and "convex" uses the score-interpolated
+                combination s * [s * p + (1 - s) * e].
+            normalize: If True, L2-normalise encoder embeddings and prototypes before
+                computing alignment (cosine similarity instead of dot product). This
+                bounds alignments to [-1, 1] and prevents dead prototypes caused by
+                scale asymmetry between the embedding cloud and far-away prototypes.
 
         Raises:
             TypeError: if encoder is not a subclass of torch.nn.Module.
@@ -144,7 +151,16 @@ class EmbeddingAE(nn.Module):
             torch.randn(self.num_embeddings, self.embedding_size),
         )
 
-        self._decode_from_prototypes = decode_from_prototypes
+        valid_decode_modes = {"embeddings", "prototypes", "convex"}
+        if decode_mode not in valid_decode_modes:
+            msg = (
+                f"Invalid decode_mode {decode_mode!r}. "
+                f"Expected one of {sorted(valid_decode_modes)}."
+            )
+            raise ValueError(msg)
+
+        self._decode_mode = decode_mode
+        self._normalize = normalize
 
     @property
     def device(self) -> torch.device:
@@ -166,10 +182,16 @@ class EmbeddingAE(nn.Module):
         embeddings = F.normalize(embeddings, dim=-1)
 
         # Shape (batch_size, num_embeddings)
-        # This computes the dot product between embedding i and prototype i, for each
-        # sample in the batch. The string is an equation that uses Einstein index
-        # notation, i.e., sum_{e=0}^{emb_size-1} embeds_{bne} * prots_{ne} = aligns_{bn}
-        alignments = torch.einsum("bne,ne->bn", embeddings, self.prototypes)
+        # Compute alignment between each encoder embedding and its prototype.
+        # With normalize=True this is cosine similarity (bounded to [-1, 1]),
+        # which prevents dead prototypes caused by scale asymmetry.
+        if self._normalize:
+            emb_for_align = F.normalize(embeddings, dim=-1)
+            proto_for_align = F.normalize(self.prototypes, dim=-1)
+        else:
+            emb_for_align = embeddings
+            proto_for_align = self.prototypes
+        alignments = torch.einsum("bne,ne->bn", emb_for_align, proto_for_align)
 
         # Shape (batch_size, num_embeddings)
         scores: Tensor = self.scoring_module(alignments)
@@ -186,10 +208,19 @@ class EmbeddingAE(nn.Module):
 
     def forward(self, x: Tensor) -> Output:
         embeddings, scores, alignments = self.encode(x)
-        if self._decode_from_prototypes:
-            recon = self.decode(self.prototypes, scores)
-        else:
-            recon = self.decode(embeddings, scores)
+
+        if self._decode_mode == "embeddings":
+            decoder_inputs = embeddings
+        elif self._decode_mode == "prototypes":
+            decoder_inputs = self.prototypes.unsqueeze(0).expand_as(embeddings)
+        else:  # self._decode_mode == "convex"
+            prototypes = self.prototypes.unsqueeze(0).expand_as(embeddings)
+            decoder_inputs = scores.unsqueeze(-1) * prototypes + (
+                1 - scores
+            ).unsqueeze(-1) * embeddings
+            # consider whether to replace scores with a value gamma = 1 - 1/epochs
+
+        recon = self.decode(decoder_inputs, scores)
 
         return self.Output(
             embeddings=embeddings,

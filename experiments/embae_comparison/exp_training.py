@@ -75,7 +75,8 @@ def build_embedding_ae(
         encoder=encoder,
         decoder=decoder,
         scoring_module=scoring_module,
-        decode_from_prototypes=cfg.decode_from_prototypes,
+        decode_mode=cfg.decode_mode,
+        normalize=cfg.normalize_embeddings,
     ).to(cfg.device)
 
 
@@ -101,8 +102,9 @@ class RunResult:
     best_test_recon: float = float("inf")
 
 
-def _make_loader(X: Tensor, batch_size: int) -> DataLoader:
-    return DataLoader(TensorDataset(X), batch_size=batch_size, shuffle=True)
+def _make_loader(X: Tensor, batch_size: int, device: torch.device) -> DataLoader:
+    """Move the full dataset to device once, then wrap in a DataLoader."""
+    return DataLoader(TensorDataset(X.to(device)), batch_size=batch_size, shuffle=True)
 
 
 def train_sparse_ae(
@@ -131,12 +133,13 @@ def train_sparse_ae(
     model.init_tied_bias(geom_median)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
-    loader = _make_loader(X_train, cfg.batch_size)
+    loader = _make_loader(X_train, cfg.batch_size, cfg.device)
     result = RunResult(model_name="SparseAE", n_concepts=n_concepts)
     X_test_d = X_test.to(cfg.device)
     best_state: dict = {}
 
-    for _epoch in trange(cfg.epochs, unit="epoch"):
+    pbar = trange(cfg.epochs, unit="epoch")
+    for _epoch in pbar:
         model.train()
         epoch_recon = 0.0
         for (xb,) in loader:
@@ -160,12 +163,12 @@ def train_sparse_ae(
             epoch_recon += recon_loss.item()
 
         result.train_recon.append(epoch_recon / len(loader))
-
         model.eval()
         with torch.inference_mode():
             out_test = model(X_test_d)
             test_recon = F.mse_loss(out_test.recon, X_test_d).item()
         result.test_recon.append(test_recon)
+        pbar.set_description(f"{test_recon:.4f}")
 
         if test_recon < result.best_test_recon:
             result.best_test_recon = test_recon
@@ -226,7 +229,7 @@ def train_embedding_ae(
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     tau_scheduler = CosineAnnealing(cfg.epochs, cfg.tau, 0.2)
-    loader = _make_loader(X_train, cfg.batch_size)
+    loader = _make_loader(X_train, cfg.batch_size, cfg.device)
     result = RunResult(model_name="EmbeddingAE", n_concepts=n_concepts)
     X_test_d = X_test.to(cfg.device)
     best_state: dict = {}
@@ -310,9 +313,9 @@ def run_experiment(
     trained_models: list[tuple[str, int, nn.Module]] = []
 
     models_to_train = (
-        [(train_embedding_ae, "EmbeddingAE")]
-        if cfg.skip_sae
-        else [(train_sparse_ae, "SparseAE"), (train_embedding_ae, "EmbeddingAE")]
+        [(train_embedding_ae, "EmbeddingAE")] if cfg.skip_sae else
+        [(train_sparse_ae, "SparseAE")] if cfg.skip_embedding else
+        [(train_sparse_ae, "SparseAE"), (train_embedding_ae, "EmbeddingAE")]
     )
 
     for n_concepts in cfg.n_concepts_list:

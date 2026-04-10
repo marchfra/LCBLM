@@ -61,7 +61,7 @@ class SparseAE(Module):
         self._encoder = TypedLinear(
             in_features=self.input_dim,
             out_features=self.latent_dim,
-            bias=False,
+            bias=True,
         )
         self.activation = activation
         self._decoder = TypedLinear(
