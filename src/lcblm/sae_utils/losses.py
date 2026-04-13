@@ -69,45 +69,45 @@ def loss_top_k(
     return recon_loss + alpha_aux * aux_loss
 
 
-def bernoulli_kl_loss_from_logits(logits: Tensor, target_p: float) -> Tensor:
-    """Compute KL divergence between concept activations and target Bernoulli.
+def bernoulli_kl_loss_from_logits(logits: Tensor, p_prior: float) -> Tensor:
+    """Compute KL divergence between concept activations and prior Bernoulli.
 
     This loss encourages concept activations to match a target sparsity level by
     measuring the divergence between the empirical Bernoulli distribution (estimated
-    from batch statistics) and a target Bernoulli(target_p) distribution. Commonly used
+    from batch statistics) and a prior Bernoulli(prior) distribution. Commonly used
     for enforcing sparsity in concept-based models or sparse autoencoders.
 
     The KL divergence for Bernoulli distributions is:
         KL(p || q) = (1 - p) * log((1 - p) / (1 - q)) + p * log(p / q)
 
     where p is the empirical probability (averaged sigmoid of logits over the batch)
-    and q is the target probability target_p.
+    and q is the prior probability p_prior.
 
     Args:
         logits: Concept logits of shape (batch_size, n_concepts) or (batch_size,
             n_concepts, 1). Each entry represents the unnormalized activation/alignment
             for a concept.
-        target_p: Target probability parameter for the Bernoulli distribution. Must be
-            in the range (0, 1) exclusive.
+        p_prior: Prior probability parameter for the Bernoulli distribution. Must be in
+            the range (0, 1) exclusive.
 
     Returns:
         Tensor: Scalar KL divergence loss, normalized by sqrt(n_concepts).
 
     Raises:
-        ValueError: If target_p is not in the range (0, 1) exclusive.
+        ValueError: If p_prior is not in the range (0, 1) exclusive.
         ValueError: If logits tensor has less than 2 dimensions.
 
     Examples:
         >>> # Encourage 5% concept activation (sparse)
         >>> logits = torch.randn(32, 100)  # 32 samples, 100 concepts
-        >>> loss = bernoulli_kl_loss(logits, target_p=0.05)
+        >>> loss = bernoulli_kl_loss(logits, p_prior=0.05)
         >>>
         >>> # Encourage balanced activation
-        >>> loss = bernoulli_kl_loss(logits, target_p=0.5)
+        >>> loss = bernoulli_kl_loss(logits, p_prior=0.5)
 
     Note:
         - The loss is normalized by sqrt(n_concepts) to make it scale-invariant
-        - Lower target_p values encourage sparser concept activations
+        - Lower p_prior values encourage sparser concept activations
 
     Warning:
         The batch dimension (dim=0) is averaged over to compute empirical probabilities.
@@ -115,8 +115,8 @@ def bernoulli_kl_loss_from_logits(logits: Tensor, target_p: float) -> Tensor:
         >=16).
 
     """
-    if not (0 < target_p < 1):
-        msg = f"target_p must be in (0, 1) exclusive, got {target_p}"
+    if not (0 < p_prior < 1):
+        msg = f"p_prior must be in (0, 1) exclusive, got {p_prior}"
         raise ValueError(msg)
 
     if logits.dim() < 2:  # noqa: PLR2004
@@ -132,20 +132,20 @@ def bernoulli_kl_loss_from_logits(logits: Tensor, target_p: float) -> Tensor:
     p = torch.sigmoid(logits).mean(dim=0)  # shape: (n_concepts,) or (n_concepts, 1)
 
     # NOTE: This is actually the KL(q || p), where q is the approximating distribution
-    # and p is the target distribution. This is a bit weird, since usually we do
+    # and p is the prior distribution. This is a bit weird, since usually we do
     # KL(p || q)
-    first_term = (1 - p) * torch.log(clamp_positive(1 - p) / (1 - target_p))
-    second_term = p * torch.log(clamp_positive(p) / target_p)
+    first_term = (1 - p) * torch.log(clamp_positive(1 - p) / (1 - p_prior))
+    second_term = p * torch.log(clamp_positive(p) / p_prior)
     kl_div = (first_term + second_term).sum()
 
     # This makes the loss magnitude comparable across models with different concept
     # counts
-    kl_div /= n_concepts**0.5
+    kl_div /= n_concepts
 
     return kl_div
 
 
-def bernoulli_kl_loss_from_probs(probs: Tensor, target_p: float) -> Tensor:
+def bernoulli_kl_loss_from_probs(probs: Tensor, p_prior: float) -> Tensor:
     """Compute KL divergence from already-computed Bernoulli probabilities.
 
     Same as :func:`bernoulli_kl_loss` but accepts probabilities in [0, 1] directly
@@ -157,14 +157,14 @@ def bernoulli_kl_loss_from_probs(probs: Tensor, target_p: float) -> Tensor:
     Args:
         probs: Soft activation probabilities of shape (batch_size, n_concepts).
             Each entry must be in [0, 1].
-        target_p: Target activation probability, must be in (0, 1) exclusive.
+        p_prior: Prior activation probability, must be in (0, 1) exclusive.
 
     Returns:
         Scalar KL divergence loss, normalised by sqrt(n_concepts).
 
     """
-    if not (0 < target_p < 1):
-        msg = f"target_p must be in (0, 1) exclusive, got {target_p}"
+    if not (0 < p_prior < 1):
+        msg = f"p_prior must be in (0, 1) exclusive, got {p_prior}"
         raise ValueError(msg)
 
     if probs.dim() < 2:  # noqa: PLR2004
@@ -178,9 +178,9 @@ def bernoulli_kl_loss_from_probs(probs: Tensor, target_p: float) -> Tensor:
 
     p = probs.mean(dim=0)  # empirical activation rate per concept
 
-    first_term = (1 - p) * torch.log(clamp_positive(1 - p) / (1 - target_p))
-    second_term = p * torch.log(clamp_positive(p) / target_p)
+    first_term = (1 - p) * torch.log(clamp_positive(1 - p) / (1 - p_prior))
+    second_term = p * torch.log(clamp_positive(p) / p_prior)
     kl_div = (first_term + second_term).sum()
-    kl_div /= n_concepts**0.5
+    kl_div /= n_concepts
 
     return kl_div
