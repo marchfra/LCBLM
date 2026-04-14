@@ -193,6 +193,9 @@ class EmbeddingAE(nn.Module):
         return super().__call__(x)
 
 
+EmbAE = EmbeddingAE
+
+
 class PrototypeEmbeddingAE(EmbeddingAE):
     """EmbeddingAE that reconstructs from learned prototypes.
 
@@ -213,3 +216,6 @@ class PrototypeEmbeddingAE(EmbeddingAE):
             alignments=alignments,
             recon=recon,
         )
+
+
+ProtoEmbAE = PrototypeEmbeddingAE
