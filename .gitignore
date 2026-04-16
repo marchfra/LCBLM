@@ -235,3 +235,4 @@ notebooks/
 
 # Experiment outputs
 experiment_outputs/
+/sst2_mistral_embeddings
