@@ -1,5 +1,4 @@
 dataset = "digits"
-n_samples = -1
 
 n_concepts_list = [5, 10, 20, 30, 50, 100]
 epochs = 2000
