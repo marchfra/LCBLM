@@ -51,9 +51,9 @@ class NextTokenDataset(Dataset[Sentence]):
             raise ValueError(msg)
 
         self.input_ids = input_ids
-        self.attention_mask = attention_mask
+        self.attention_mask = attention_mask.bool()
         self.eos_token_id = eos_token_id
-        self.embeddings = embeddings
+        self.embeddings = embeddings.float()
 
     def __len__(self) -> int:
         return self.num_sentences
