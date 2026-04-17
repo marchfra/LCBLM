@@ -59,6 +59,9 @@ class RunConfig:
         vaee_lambda_ent: Coefficient for the entropy regularisation term.
         sae_lambda_l1: L1 sparsity coefficient for both SparseAE variants.
         skip_sae: If True, skip training both SparseAE variants.
+        wandb_project: W&B project name. If None, W&B logging is disabled.
+            Use a separate project for exploratory runs (e.g. "vaee-vs-sae-dev")
+            to keep the main project clean.
 
     """
 
@@ -79,3 +82,4 @@ class RunConfig:
     vaee_lambda_ent: float = 0.01
     sae_lambda_l1: float = 1e-3
     skip_sae: bool = False
+    wandb_project: str | None = None

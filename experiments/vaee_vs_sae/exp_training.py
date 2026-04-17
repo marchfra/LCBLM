@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+import tempfile
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
@@ -12,6 +15,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
+import wandb
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.dataset import compute_tied_bias
 from lcblm.utils.data import NextTokenDataset, typed_dataloader
@@ -21,6 +25,7 @@ from .exp_metrics import l0_sparse, l0_vaee
 
 if TYPE_CHECKING:
     from torch import Tensor
+    from wandb.sdk.wandb_run import Run as WandbRun
 
     from .exp_config import DatasetConfig, RunConfig
 
@@ -134,12 +139,13 @@ def _select_tokens(embeddings: Tensor, mask: Tensor) -> Tensor:
 # ── Training functions ────────────────────────────────────────────────────────
 
 
-def train_vaee(  # noqa: PLR0915
+def train_vaee(  # noqa: PLR0913, PLR0915
     num_embeddings: int,
     train_ds: NextTokenDataset,
     val_ds: NextTokenDataset,
     cfg: RunConfig,
     ds_cfg: DatasetConfig,
+    wandb_run: WandbRun | None = None,
 ) -> tuple[VAEE, RunResult]:
     """Train a VAEE and return the best-checkpoint model with recorded metrics.
 
@@ -149,6 +155,7 @@ def train_vaee(  # noqa: PLR0915
         val_ds: Normalised validation NextTokenDataset.
         cfg: Hyperparameter configuration.
         ds_cfg: Dataset metadata.
+        wandb_run: Active W&B run to log metrics to, or None to skip logging.
 
     Returns:
         Best-checkpoint VAEE and the run's recorded metrics.
@@ -234,6 +241,13 @@ def train_vaee(  # noqa: PLR0915
         result.val_recon.append(val_recon)
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
+        if wandb_run is not None:
+            wandb_run.log(
+                {f"train/vaee_{k}": v / n_batches for k, v in epoch_terms.items()}
+                | {f"val/vaee_{k}": v / n_val for k, v in val_terms.items()},
+                step=_epoch + 1,
+            )
+
         if val_recon < result.best_val_recon:
             result.best_val_recon = val_recon
             best_state = copy.deepcopy(model.state_dict())
@@ -248,16 +262,25 @@ def train_vaee(  # noqa: PLR0915
             c_all.append(model(_select_tokens(emb, mask)).c)
         result.best_l0 = l0_vaee(torch.cat(c_all, dim=0))
 
+    if wandb_run is not None:
+        wandb_run.summary.update(
+            {
+                "best_val_recon": result.best_val_recon,
+                "best_l0": result.best_l0,
+            },
+        )
+
     return model, result
 
 
-def train_sae(  # noqa: PLR0913
+def train_sae(  # noqa: PLR0913, PLR0915
     latent_dim: int,
     model_name: str,
     train_ds: NextTokenDataset,
     val_ds: NextTokenDataset,
     cfg: RunConfig,
     ds_cfg: DatasetConfig,
+    wandb_run: WandbRun | None = None,
 ) -> tuple[SparseAE, RunResult]:
     """Train a SparseAE with ReLU + L1 sparsity.
 
@@ -268,6 +291,7 @@ def train_sae(  # noqa: PLR0913
         val_ds: Normalised validation NextTokenDataset.
         cfg: Hyperparameter configuration.
         ds_cfg: Dataset metadata.
+        wandb_run: Active W&B run to log metrics to, or None to skip logging.
 
     Returns:
         Best-checkpoint SparseAE and the run's recorded metrics.
@@ -320,6 +344,13 @@ def train_sae(  # noqa: PLR0913
         result.val_recon.append(val_recon)
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
+        if wandb_run is not None:
+            wandb_run.log(
+                {f"train/sae_{k}": v / n_batches for k, v in epoch_terms.items()}
+                | {f"val/sae_{k}": v / n_val for k, v in val_terms.items()},
+                step=_epoch + 1,
+            )
+
         if val_recon < result.best_val_recon:
             result.best_val_recon = val_recon
             best_state = copy.deepcopy(model.state_dict())
@@ -334,10 +365,82 @@ def train_sae(  # noqa: PLR0913
             latents_all.append(model(_select_tokens(emb, mask)).latents)
         result.best_l0 = l0_sparse(torch.cat(latents_all, dim=0))
 
+    if wandb_run is not None:
+        wandb_run.summary.update(
+            {
+                "best_val_recon": result.best_val_recon,
+                "best_l0": result.best_l0,
+            },
+        )
+
     return model, result
 
 
 # ── Experiment runner ─────────────────────────────────────────────────────────
+
+
+def _wandb_init(  # noqa: PLR0913
+    group: str,
+    model_name: str,
+    sweep_n: int,
+    n_concepts: int,
+    cfg: RunConfig,
+    ds_cfg: DatasetConfig,
+) -> WandbRun | None:
+    """Initialise a W&B run for one (model, sweep_n) training job.
+
+    Args:
+        group: W&B run group shared by all runs in one experiment invocation.
+        model_name: "VAEE", "SparseAE-concept", or "SparseAE-param".
+        sweep_n: The num_embeddings value from the sweep axis. Equals n_concepts
+            for VAEE and SparseAE-concept; differs for SparseAE-param.
+        n_concepts: Actual latent dimension of the model being trained.
+        cfg: Run hyperparameters (used for W&B config and project name).
+        ds_cfg: Dataset metadata (used for W&B config).
+
+    """
+    if cfg.wandb_project is None:
+        return None
+
+    cfg_dict = {
+        k: v for k, v in asdict(cfg).items() if k not in ("device", "wandb_project")
+    }
+    return wandb.init(
+        project=cfg.wandb_project,
+        group=group,
+        name=f"{model_name}-n{sweep_n}",
+        job_type=model_name.lower().replace("-", "_"),
+        config={
+            **cfg_dict,
+            **asdict(ds_cfg),
+            "model_name": model_name,
+            "sweep_n": sweep_n,
+            "n_concepts": n_concepts,
+        },
+        reinit=True,
+    )
+
+
+def _log_model_artifact(
+    wandb_run: WandbRun,
+    model: nn.Module,
+    model_name: str,
+    sweep_n: int,
+) -> None:
+    """Log model weights as a versioned W&B artifact on the given run."""
+    artifact = wandb.Artifact(
+        name=f"{model_name.lower().replace('-', '_')}_n{sweep_n:03d}",
+        type="model",
+        metadata={"model_name": model_name, "sweep_n": sweep_n},
+    )
+    with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
+        tmp_path = Path(f.name)
+    try:
+        torch.save(model.state_dict(), tmp_path)
+        artifact.add_file(str(tmp_path), name="model.pt")
+        wandb_run.log_artifact(artifact)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def run_experiment(
@@ -367,10 +470,26 @@ def run_experiment(
     results: list[RunResult] = []
     trained_models: list[tuple[str, int, nn.Module]] = []
 
+    wandb_group = "None"
+    if cfg.wandb_project is not None:
+        wandb_group = f"{ds_cfg.name}_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}"
+        print(f"W&B project: {cfg.wandb_project}  group: {wandb_group}")
+
     for n in cfg.num_embeddings_list:
         print(f"\n-- VAEE | num_embeddings={n} --")
-        vaee, vaee_result = train_vaee(n, train_ds, val_ds, cfg, ds_cfg)
+        wandb_run = _wandb_init(wandb_group, "VAEE", n, n, cfg, ds_cfg)
+        vaee, vaee_result = train_vaee(
+            n,
+            train_ds,
+            val_ds,
+            cfg,
+            ds_cfg,
+            wandb_run=wandb_run,
+        )
         vaee_result.sweep_n = n
+        if wandb_run is not None:
+            _log_model_artifact(wandb_run, vaee, "VAEE", n)
+            wandb_run.finish()
         trained_models.append(("VAEE", n, vaee))
         results.append(vaee_result)
         print(
@@ -379,6 +498,7 @@ def run_experiment(
 
         if not cfg.skip_sae:
             print(f"-- SparseAE-concept | latent_dim={n} --")
+            wandb_run = _wandb_init(wandb_group, "SparseAE-concept", n, n, cfg, ds_cfg)
             sae_c, sae_c_result = train_sae(
                 n,
                 "SparseAE-concept",
@@ -386,8 +506,12 @@ def run_experiment(
                 val_ds,
                 cfg,
                 ds_cfg,
+                wandb_run=wandb_run,
             )
             sae_c_result.sweep_n = n
+            if wandb_run is not None:
+                _log_model_artifact(wandb_run, sae_c, "SparseAE-concept", n)
+                wandb_run.finish()
             trained_models.append(("SparseAE-concept", n, sae_c))
             results.append(sae_c_result)
             print(
@@ -399,6 +523,14 @@ def run_experiment(
                 f"-- SparseAE-param | latent_dim={param_dim}"
                 f" (param-matched to VAEE n={n}) --",
             )
+            wandb_run = _wandb_init(
+                wandb_group,
+                "SparseAE-param",
+                n,
+                param_dim,
+                cfg,
+                ds_cfg,
+            )
             sae_p, sae_p_result = train_sae(
                 param_dim,
                 "SparseAE-param",
@@ -406,10 +538,14 @@ def run_experiment(
                 val_ds,
                 cfg,
                 ds_cfg,
+                wandb_run=wandb_run,
             )
             sae_p_result.sweep_n = (
                 n  # n_concepts is param_dim, but belongs to sweep step n
             )
+            if wandb_run is not None:
+                _log_model_artifact(wandb_run, sae_p, "SparseAE-param", n)
+                wandb_run.finish()
             trained_models.append(("SparseAE-param", n, sae_p))
             results.append(sae_p_result)
             print(
