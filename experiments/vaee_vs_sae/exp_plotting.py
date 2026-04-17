@@ -147,12 +147,13 @@ def plot_learning_curves(
             best_epoch = int(r.val_recon.index(min(r.val_recon))) + 1
             color = COLORS[model_name]
             ax.plot(epochs, r.train_recon, lw=1, color=color, label="train")
-            ax.plot(epochs, r.val_recon, lw=2, color=color, ls="--", label="val")
-            ax.axvline(best_epoch, ls=":", color="gray", lw=1)
+            ax.plot(epochs, r.val_recon, lw=2, color=color, label="val")
+            ax.axvline(best_epoch, ls="--", color=color, lw=1, alpha=0.7)
             if row == 0:
                 ax.set_title(f"n_latents={n}")
             if col == 0:
                 ax.set_ylabel(f"{model_name}\nRecon MSE")
+                ax.legend()
             if row == n_rows - 1:
                 ax.set_xlabel("Epoch")
 
