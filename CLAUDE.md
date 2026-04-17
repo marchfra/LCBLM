@@ -43,6 +43,8 @@ vaee-exp plot experiments/vaee_vs_sae/experiment_outputs/.../results.json
 
 Commits are validated by commitizen (conventional commit format). Pre-commit hooks run ruff and uv-lock on every commit.
 
+After each major change to the project (new experiment, new architecture, new CLI, significant refactor), update this file to reflect the new state.
+
 ## Architecture
 
 ### Active development
