@@ -161,7 +161,7 @@ def train_vaee(  # noqa: PLR0915
     result = RunResult(model_name="VAEE", n_concepts=num_embeddings)
     best_state: dict = {}
 
-    for _epoch in trange(cfg.epochs, unit="epoch", leave=False):
+    for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_terms: dict[str, float] = {
             "recon": 0.0,
@@ -280,7 +280,7 @@ def train_sae(  # noqa: PLR0913
     result = RunResult(model_name=model_name, n_concepts=latent_dim)
     best_state: dict = {}
 
-    for _epoch in trange(cfg.epochs, unit="epoch", leave=False):
+    for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
         for batch in typed_dataloader(train_loader):
