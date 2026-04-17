@@ -129,7 +129,7 @@ def plot_learning_curves(
     fig, axes = plt.subplots(
         n_rows,
         n_cols,
-        figsize=(4 * n_cols, 3.5 * n_rows),
+        figsize=(4 * n_cols + 1, 3 * n_rows + 1),
         sharex=True,
         sharey="row",
         squeeze=False,
