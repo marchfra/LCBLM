@@ -480,25 +480,26 @@ def run_experiment(
         print(f"W&B project: {cfg.wandb_project}  group: {wandb_group}")
 
     for n in cfg.num_embeddings_list:
-        print(f"\n-- VAEE | num_embeddings={n} --")
-        wandb_run = _wandb_init(wandb_group, "VAEE", n, n, cfg, ds_cfg)
-        vaee, vaee_result = train_vaee(
-            n,
-            train_ds,
-            val_ds,
-            cfg,
-            ds_cfg,
-            wandb_run=wandb_run,
-        )
-        vaee_result.sweep_n = n
-        if wandb_run is not None:
-            _log_model_artifact(wandb_run, vaee, "VAEE", n)
-            wandb_run.finish()
-        trained_models.append(("VAEE", n, vaee))
-        results.append(vaee_result)
-        print(
-            f"   L0={vaee_result.best_l0:.2f}  val_MSE={vaee_result.best_val_recon:.5f}",  # noqa: E501
-        )
+        if not cfg.skip_vaee:
+            print(f"\n-- VAEE | num_embeddings={n} --")
+            wandb_run = _wandb_init(wandb_group, "VAEE", n, n, cfg, ds_cfg)
+            vaee, vaee_result = train_vaee(
+                n,
+                train_ds,
+                val_ds,
+                cfg,
+                ds_cfg,
+                wandb_run=wandb_run,
+            )
+            vaee_result.sweep_n = n
+            if wandb_run is not None:
+                _log_model_artifact(wandb_run, vaee, "VAEE", n)
+                wandb_run.finish()
+            trained_models.append(("VAEE", n, vaee))
+            results.append(vaee_result)
+            print(
+                f"   L0={vaee_result.best_l0:.2f}  val_MSE={vaee_result.best_val_recon:.5f}",  # noqa: E501
+            )
 
         if not cfg.skip_sae:
             print(f"-- SparseAE-concept | latent_dim={n} --")
@@ -522,39 +523,40 @@ def run_experiment(
                 f"   L0={sae_c_result.best_l0:.2f}  val_MSE={sae_c_result.best_val_recon:.5f}",  # noqa: E501
             )
 
-            param_dim = param_matched_latent_dim(vaee, ds_cfg.input_dim)
-            print(
-                f"-- SparseAE-param | latent_dim={param_dim}"
-                f" (param-matched to VAEE n={n}) --",
-            )
-            wandb_run = _wandb_init(
-                wandb_group,
-                "SparseAE-param",
-                n,
-                param_dim,
-                cfg,
-                ds_cfg,
-            )
-            sae_p, sae_p_result = train_sae(
-                param_dim,
-                "SparseAE-param",
-                train_ds,
-                val_ds,
-                cfg,
-                ds_cfg,
-                wandb_run=wandb_run,
-            )
-            sae_p_result.sweep_n = (
-                n  # n_concepts is param_dim, but belongs to sweep step n
-            )
-            if wandb_run is not None:
-                _log_model_artifact(wandb_run, sae_p, "SparseAE-param", n)
-                wandb_run.finish()
-            trained_models.append(("SparseAE-param", n, sae_p))
-            results.append(sae_p_result)
-            print(
-                f"   L0={sae_p_result.best_l0:.2f}  val_MSE={sae_p_result.best_val_recon:.5f}",  # noqa: E501
-            )
+            if not cfg.skip_vaee:
+                param_dim = param_matched_latent_dim(vaee, ds_cfg.input_dim)
+                print(
+                    f"-- SparseAE-param | latent_dim={param_dim}"
+                    f" (param-matched to VAEE n={n}) --",
+                )
+                wandb_run = _wandb_init(
+                    wandb_group,
+                    "SparseAE-param",
+                    n,
+                    param_dim,
+                    cfg,
+                    ds_cfg,
+                )
+                sae_p, sae_p_result = train_sae(
+                    param_dim,
+                    "SparseAE-param",
+                    train_ds,
+                    val_ds,
+                    cfg,
+                    ds_cfg,
+                    wandb_run=wandb_run,
+                )
+                sae_p_result.sweep_n = (
+                    n  # n_concepts is param_dim, but belongs to sweep step n
+                )
+                if wandb_run is not None:
+                    _log_model_artifact(wandb_run, sae_p, "SparseAE-param", n)
+                    wandb_run.finish()
+                trained_models.append(("SparseAE-param", n, sae_p))
+                results.append(sae_p_result)
+                print(
+                    f"   L0={sae_p_result.best_l0:.2f}  val_MSE={sae_p_result.best_val_recon:.5f}",  # noqa: E501
+                )
 
         print()
     return results, trained_models

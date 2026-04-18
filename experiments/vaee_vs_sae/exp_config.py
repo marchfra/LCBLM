@@ -63,6 +63,7 @@ class RunConfig:
             momentum clean) and re-normalisation after (corrects floating-point drift).
             Fixes the shrinkage problem where encoder weights shrink and decoder weights
             grow to reduce L1 without actually increasing sparsity.
+        skip_vaee: If True, skip training the VAEE.
         skip_sae: If True, skip training both SparseAE variants.
         wandb_project: W&B project name. If None, W&B logging is disabled.
             Use a separate project for exploratory runs (e.g. "vaee-vs-sae-dev")
@@ -87,5 +88,6 @@ class RunConfig:
     vaee_lambda_ent: float = 0.01
     sae_lambda_l1: float = 1e-3
     sae_normalize_decoder: bool = False
+    skip_vaee: bool = False
     skip_sae: bool = False
     wandb_project: str | None = None
