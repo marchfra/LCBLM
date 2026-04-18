@@ -318,7 +318,11 @@ def train_sae(  # noqa: PLR0913, PLR0915
             loss = recon_loss + cfg.sae_lambda_l1 * l1_loss
             optimizer.zero_grad()
             loss.backward()
+            if cfg.sae_normalize_decoder:
+                model.project_decoder_gradients()
             optimizer.step()
+            if cfg.sae_normalize_decoder:
+                model.normalize_decoder()
             epoch_terms["recon"] += recon_loss.item()
             epoch_terms["l1"] += l1_loss.item()
 

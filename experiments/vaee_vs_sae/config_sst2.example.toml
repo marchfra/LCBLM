@@ -17,6 +17,7 @@ vaee_beta = 1.0
 vaee_lambda_ent = 0.01
 
 sae_lambda_l1 = 1e-3
+sae_normalize_decoder = true
 
 # wandb_project = "vaee-vs-sae"       # production runs
 # wandb_project = "vaee-vs-sae-dev"   # exploratory / debug runs

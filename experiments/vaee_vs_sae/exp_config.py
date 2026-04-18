@@ -58,6 +58,11 @@ class RunConfig:
         vaee_beta: Coefficient for the sparsity KL loss term.
         vaee_lambda_ent: Coefficient for the entropy regularisation term.
         sae_lambda_l1: L1 sparsity coefficient for both SparseAE variants.
+        sae_normalize_decoder: If True, apply decoder column normalisation during
+            SparseAE training: gradient projection before optimizer step (keeps Adam
+            momentum clean) and re-normalisation after (corrects floating-point drift).
+            Fixes the shrinkage problem where encoder weights shrink and decoder weights
+            grow to reduce L1 without actually increasing sparsity.
         skip_sae: If True, skip training both SparseAE variants.
         wandb_project: W&B project name. If None, W&B logging is disabled.
             Use a separate project for exploratory runs (e.g. "vaee-vs-sae-dev")
@@ -81,5 +86,6 @@ class RunConfig:
     vaee_beta: float = 1.0
     vaee_lambda_ent: float = 0.01
     sae_lambda_l1: float = 1e-3
+    sae_normalize_decoder: bool = False
     skip_sae: bool = False
     wandb_project: str | None = None

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple
 
 import torch
+import torch.nn.functional as F  # noqa: N812
 from torch import Tensor, nn
 from torch.nn import Module
 
@@ -150,6 +151,33 @@ class SparseAE(Module):
             latents_pre_activation=z_pre_act,
             recon=recon,
         )
+
+    def project_decoder_gradients(self) -> None:
+        """Remove gradient components parallel to each decoder column.
+
+        Call before optimizer.step() to prevent Adam accumulating momentum in
+        the magnitude direction (which is discarded by normalisation anyway).
+        No-op if the decoder weight has no gradient yet.
+        """
+        W = self._decoder.weight  # noqa: N806
+        if W.grad is None:
+            return
+        with torch.no_grad():
+            W_dir = F.normalize(W, p=2, dim=0)  # noqa: N806
+            W.grad -= (W.grad * W_dir).sum(dim=0, keepdim=True) * W_dir
+
+    def normalize_decoder(self) -> None:
+        """Normalise decoder columns to unit L2 norm.
+
+        Call after optimizer.step() to correct floating-point drift when
+        decoder column normalisation is enabled.
+        """
+        with torch.no_grad():
+            self._decoder.weight.data = F.normalize(
+                self._decoder.weight.data,
+                p=2,
+                dim=0,
+            )
 
     def __call__(self, x: Tensor) -> Output:
         return super().__call__(x)
