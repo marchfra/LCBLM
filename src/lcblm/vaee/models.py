@@ -25,6 +25,8 @@ class VAEE(nn.Module):
         embedding_size: int = 16,
         gumbel_temp: float = 0.5,
         output_activation: nn.Module | None = None,
+        *,
+        linear_enc_dec: bool = False,
     ) -> None:
         if num_embeddings <= 0:
             msg = "num_embeddings must be non-negative."
@@ -46,15 +48,19 @@ class VAEE(nn.Module):
             output_activation if output_activation is not None else nn.Identity()
         )
 
-        self._encoder = MLP(
-            input_dim,
-            hidden_dim,
-            self.num_embeddings * self.embedding_size,
-        )
-        self._decoder = nn.Sequential(
-            MLP(self.num_embeddings * self.embedding_size, hidden_dim, input_dim),
-            self._output_activation,
-        )
+        enc_out = self.num_embeddings * self.embedding_size
+        if linear_enc_dec:
+            self._encoder = nn.Linear(input_dim, enc_out)
+            self._decoder = nn.Sequential(
+                nn.Linear(enc_out, input_dim),
+                self._output_activation,
+            )
+        else:
+            self._encoder = MLP(input_dim, hidden_dim, enc_out)
+            self._decoder = nn.Sequential(
+                MLP(enc_out, hidden_dim, input_dim),
+                self._output_activation,
+            )
 
         self.prototypes = nn.Parameter(
             torch.randn(self.num_embeddings, self.embedding_size),

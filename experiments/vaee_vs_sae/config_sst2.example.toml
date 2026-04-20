@@ -9,12 +9,13 @@ batch_size = 512
 seed = 42
 
 vaee_hidden_dim = 256
+vaee_linear = false         # set true to replace encoder/decoder MLPs with nn.Linear
 vaee_embedding_size = 16
 vaee_gumbel_temp = 0.5
 vaee_pi = 0.1
 vaee_gamma = 0.01
 vaee_beta = 1.0
-vaee_beta_warmup_epochs = 0  # set e.g. to 500 to ramp beta from 0 → vaee_beta over 500 epochs
+vaee_beta_warmup_epochs = 0 # set e.g. to 500 to ramp beta from 0 → vaee_beta over 500 epochs
 vaee_lambda_ent = 0.01
 
 sae_lambda_l1 = 1e-3

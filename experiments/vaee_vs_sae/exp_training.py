@@ -42,6 +42,7 @@ def build_vaee(num_embeddings: int, cfg: RunConfig, ds_cfg: DatasetConfig) -> VA
         embedding_size=cfg.vaee_embedding_size,
         gumbel_temp=cfg.vaee_gumbel_temp,
         output_activation=None,  # nn.Identity — no output range constraint
+        linear_enc_dec=cfg.vaee_linear,
     ).to(cfg.device)
 
 

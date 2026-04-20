@@ -50,7 +50,10 @@ class RunConfig:
         seed: Global random seed.
         device: Torch device to train on.
         vaee_hidden_dim: Hidden layer size for the VAEE encoder/decoder MLPs. Should be
-            much smaller than input_dim to act as a bottleneck.
+            much smaller than input_dim to act as a bottleneck. Ignored when vaee_linear
+            is True.
+        vaee_linear: If True, replace encoder and decoder MLPs with single linear
+            layers, removing the hidden_dim bottleneck entirely.
         vaee_embedding_size: Dimensionality of each prototype embedding vector.
         vaee_gumbel_temp: Gumbel-Sigmoid temperature (lower = more discrete).
         vaee_pi: Target Bernoulli activation probability for VAEE sparsity loss.
@@ -82,6 +85,7 @@ class RunConfig:
     seed: int = 42
     device: torch.device = field(default_factory=get_device)
     vaee_hidden_dim: int = 256
+    vaee_linear: bool = False
     vaee_embedding_size: int = 16
     vaee_gumbel_temp: float = 0.5
     vaee_pi: float = 0.1
