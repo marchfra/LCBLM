@@ -183,6 +183,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "cond_kl": 0.0,
             "sparsity": 0.0,
             "entropy": 0.0,
+            "l0": 0.0,
         }
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
@@ -208,6 +209,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
             epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
             epoch_terms["entropy"] += loss_out.entropy_loss.item()
+            epoch_terms["l0"] += out.c.detach().sum(dim=1).mean().item()
 
         n_batches = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_batches)
@@ -221,6 +223,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "cond_kl": 0.0,
             "sparsity": 0.0,
             "entropy": 0.0,
+            "l0": 0.0,
         }
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
@@ -243,6 +246,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 val_terms["cond_kl"] += loss_out.cond_kl_loss.item()
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
                 val_terms["entropy"] += loss_out.entropy_loss.item()
+                val_terms["l0"] += out.c.sum(dim=1).mean().item()
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
@@ -314,7 +318,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
 
     for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
-        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0, "l0": 0.0}
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
             mask = batch.attention_mask.to(cfg.device)
@@ -333,6 +337,9 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 model.normalize_decoder()
             epoch_terms["recon"] += recon_loss.item()
             epoch_terms["l1"] += l1_loss.item()
+            epoch_terms["l0"] += (
+                (out.latents.detach() > 0).float().sum(dim=1).mean().item()
+            )
 
         n_batches = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_batches)
@@ -341,7 +348,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
         )
 
         model.eval()
-        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0, "l0": 0.0}
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 emb = batch.embeddings.to(cfg.device)
@@ -350,6 +357,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 out = model(tokens)
                 val_terms["recon"] += F.mse_loss(out.recon, tokens).item()
                 val_terms["l1"] += out.latents.abs().mean().item()
+                val_terms["l0"] += (out.latents > 0).float().sum(dim=1).mean().item()
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
