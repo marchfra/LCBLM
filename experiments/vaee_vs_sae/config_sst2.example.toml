@@ -9,7 +9,7 @@ batch_size = 512
 seed = 42
 
 vaee_hidden_dim = 256
-vaee_linear = false         # set true to replace encoder/decoder MLPs with nn.Linear
+vaee_encoder_type = "mlp"   # "mlp" | "linear" | "shallow"
 vaee_embedding_size = 16
 vaee_gumbel_temp = 0.5
 vaee_pi = 0.1

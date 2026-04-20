@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import torch
 from torch import Tensor, nn
@@ -26,7 +26,7 @@ class VAEE(nn.Module):
         gumbel_temp: float = 0.5,
         output_activation: nn.Module | None = None,
         *,
-        linear_enc_dec: bool = False,
+        encoder_type: Literal["mlp", "linear", "shallow"] = "mlp",
     ) -> None:
         if num_embeddings <= 0:
             msg = "num_embeddings must be non-negative."
@@ -49,18 +49,31 @@ class VAEE(nn.Module):
         )
 
         enc_out = self.num_embeddings * self.embedding_size
-        if linear_enc_dec:
-            self._encoder = nn.Linear(input_dim, enc_out)
-            self._decoder = nn.Sequential(
-                nn.Linear(enc_out, input_dim),
-                self._output_activation,
-            )
-        else:
-            self._encoder = MLP(input_dim, hidden_dim, enc_out)
-            self._decoder = nn.Sequential(
-                MLP(enc_out, hidden_dim, input_dim),
-                self._output_activation,
-            )
+        match encoder_type:
+            case "mlp":
+                self._encoder = MLP(input_dim, hidden_dim, enc_out)
+                self._decoder = nn.Sequential(
+                    MLP(enc_out, hidden_dim, input_dim),
+                    self._output_activation,
+                )
+            case "linear":
+                self._encoder = nn.Linear(input_dim, enc_out)
+                self._decoder = nn.Sequential(
+                    nn.Linear(enc_out, input_dim),
+                    self._output_activation,
+                )
+            case "shallow":
+                self._encoder = nn.Sequential(nn.Linear(input_dim, enc_out), nn.GELU())
+                self._decoder = nn.Sequential(
+                    nn.Linear(enc_out, input_dim),
+                    self._output_activation,
+                )
+            case _:
+                msg = (
+                    f"Unknown encoder_type: {encoder_type!r}. "
+                    f"Must be 'mlp', 'linear', or 'shallow'."
+                )
+                raise ValueError(msg)
 
         self.prototypes = nn.Parameter(
             torch.randn(self.num_embeddings, self.embedding_size),

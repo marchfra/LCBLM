@@ -42,7 +42,7 @@ def build_vaee(num_embeddings: int, cfg: RunConfig, ds_cfg: DatasetConfig) -> VA
         embedding_size=cfg.vaee_embedding_size,
         gumbel_temp=cfg.vaee_gumbel_temp,
         output_activation=None,  # nn.Identity — no output range constraint
-        linear_enc_dec=cfg.vaee_linear,
+        encoder_type=cfg.vaee_encoder_type,
     ).to(cfg.device)
 
 
@@ -434,6 +434,7 @@ def _wandb_init(  # noqa: PLR0913
     }
     _vaee_keys = _shared | {
         "vaee_hidden_dim",
+        "vaee_encoder_type",
         "vaee_embedding_size",
         "vaee_gumbel_temp",
         "vaee_pi",

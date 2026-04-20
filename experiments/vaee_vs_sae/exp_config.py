@@ -8,7 +8,7 @@ risk of accidental mutation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from lcblm.utils import get_device
 
@@ -52,8 +52,11 @@ class RunConfig:
         vaee_hidden_dim: Hidden layer size for the VAEE encoder/decoder MLPs. Should be
             much smaller than input_dim to act as a bottleneck. Ignored when vaee_linear
             is True.
-        vaee_linear: If True, replace encoder and decoder MLPs with single linear
-            layers, removing the hidden_dim bottleneck entirely.
+        vaee_encoder_type: Encoder/decoder architecture. "mlp" uses a 2-layer MLP with
+            hidden_dim bottleneck (default). "linear" uses a single nn.Linear (no
+            bottleneck, no non-linearity). "shallow" uses nn.Linear + GELU (no
+            bottleneck, with non-linearity). hidden_dim is ignored for "linear" and
+            "shallow".
         vaee_embedding_size: Dimensionality of each prototype embedding vector.
         vaee_gumbel_temp: Gumbel-Sigmoid temperature (lower = more discrete).
         vaee_pi: Target Bernoulli activation probability for VAEE sparsity loss.
@@ -85,7 +88,7 @@ class RunConfig:
     seed: int = 42
     device: torch.device = field(default_factory=get_device)
     vaee_hidden_dim: int = 256
-    vaee_linear: bool = False
+    vaee_encoder_type: Literal["mlp", "linear", "shallow"] = "mlp"
     vaee_embedding_size: int = 16
     vaee_gumbel_temp: float = 0.5
     vaee_pi: float = 0.1
