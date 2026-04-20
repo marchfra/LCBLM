@@ -414,9 +414,28 @@ def _wandb_init(  # noqa: PLR0913
     if cfg.wandb_project is None:
         return None
 
-    cfg_dict = {
-        k: v for k, v in asdict(cfg).items() if k not in ("device", "wandb_project")
+    _shared = {
+        "epochs",
+        "lr",
+        "batch_size",
+        "seed",
+        "num_embeddings_list",
+        "skip_vaee",
+        "skip_sae",
     }
+    _vaee_keys = _shared | {
+        "vaee_hidden_dim",
+        "vaee_embedding_size",
+        "vaee_gumbel_temp",
+        "vaee_pi",
+        "vaee_gamma",
+        "vaee_beta",
+        "vaee_beta_warmup_epochs",
+        "vaee_lambda_ent",
+    }
+    _sae_keys = _shared | {"sae_lambda_l1", "sae_normalize_decoder"}
+    relevant = _vaee_keys if model_name == "VAEE" else _sae_keys
+    cfg_dict = {k: v for k, v in asdict(cfg).items() if k in relevant}
     return wandb.init(
         project=cfg.wandb_project,
         group=group,
