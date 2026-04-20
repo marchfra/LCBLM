@@ -55,6 +55,13 @@ class NextTokenDataset(Dataset[Sentence]):
         self.eos_token_id = eos_token_id
         self.embeddings = embeddings.float()
 
+        eos_col = torch.full(
+            (input_ids.size(0), 1),
+            eos_token_id,
+            dtype=input_ids.dtype,
+        )
+        self._next_token_ids = torch.cat([input_ids[:, 1:], eos_col], dim=1)
+
     def __len__(self) -> int:
         return self.num_sentences
 
@@ -83,26 +90,12 @@ class NextTokenDataset(Dataset[Sentence]):
     def __getitem__(self, index: range) -> list[Sentence]: ...
     def __getitem__(self, index):
         if isinstance(index, int):
-            input_ids = self.input_ids[index]
-            attention_mask = self.attention_mask[index]
-            embeddings = self.embeddings[index]
-
-            next_token_ids = torch.cat(
-                [input_ids[1:], torch.tensor([self.eos_token_id])],
-            )
-            # With transformers==5.0.0 the tokenizer pads on the right. This means that,
-            # if I use the EOS_TOKEN as padding (which I do), there's no need to shift
-            # the attention mask by one
-            # If using transformers<5, change the next line to
-            # `next_attention_mask = torch.cat([attention_mask[1:], torch.tensor([1])])`
-            next_attention_mask = attention_mask
-
             return Sentence(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                embeddings=embeddings,
-                next_token_ids=next_token_ids,
-                next_attention_mask=next_attention_mask,
+                input_ids=self.input_ids[index],
+                attention_mask=self.attention_mask[index],
+                embeddings=self.embeddings[index],
+                next_token_ids=self._next_token_ids[index],
+                next_attention_mask=self.attention_mask[index],
             )
 
         if isinstance(index, (list, range)):
