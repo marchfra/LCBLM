@@ -166,8 +166,23 @@ def train_vaee(  # noqa: PLR0913, PLR0915
     """
     model = build_vaee(num_embeddings, cfg, ds_cfg)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
+    pin = cfg.device.type == "cuda"
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=pin,
+        persistent_workers=True,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=pin,
+        persistent_workers=True,
+    )
     result = RunResult(model_name="VAEE", n_concepts=num_embeddings)
     best_state: dict = {}
 
@@ -313,8 +328,23 @@ def train_sae(  # noqa: PLR0913, PLR0915
     """
     model = build_sae(latent_dim, train_ds, cfg, ds_cfg)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
-    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
+    pin = cfg.device.type == "cuda"
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=pin,
+        persistent_workers=True,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=pin,
+        persistent_workers=True,
+    )
     result = RunResult(model_name=model_name, n_concepts=latent_dim)
     best_state: dict = {}
 
