@@ -108,6 +108,8 @@ class RunResult:
     n_concepts: int
     train_recon: list[float] = field(default_factory=list)
     val_recon: list[float] = field(default_factory=list)
+    train_l0: list[float] = field(default_factory=list)
+    val_l0: list[float] = field(default_factory=list)
     train_breakdown: list[dict[str, float]] = field(default_factory=list)
     val_breakdown: list[dict[str, float]] = field(default_factory=list)
     best_l0: float = float("inf")
@@ -183,8 +185,8 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "cond_kl": 0.0,
             "sparsity": 0.0,
             "entropy": 0.0,
-            "l0": 0.0,
         }
+        c_train: list[torch.Tensor] = []
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
             mask = batch.attention_mask.to(cfg.device)
@@ -209,10 +211,11 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
             epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
             epoch_terms["entropy"] += loss_out.entropy_loss.item()
-            epoch_terms["l0"] += out.c.detach().sum(dim=1).mean().item()
+            c_train.append(out.c.detach())
 
         n_batches = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_batches)
+        result.train_l0.append(l0_vaee(torch.cat(c_train, dim=0)))
         result.train_breakdown.append(
             {k: v / n_batches for k, v in epoch_terms.items()},
         )
@@ -223,8 +226,8 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "cond_kl": 0.0,
             "sparsity": 0.0,
             "entropy": 0.0,
-            "l0": 0.0,
         }
+        c_val: list[torch.Tensor] = []
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 emb = batch.embeddings.to(cfg.device)
@@ -246,41 +249,39 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 val_terms["cond_kl"] += loss_out.cond_kl_loss.item()
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
                 val_terms["entropy"] += loss_out.entropy_loss.item()
-                val_terms["l0"] += out.c.sum(dim=1).mean().item()
+                c_val.append(out.c)
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
         result.val_recon.append(val_recon)
+        result.val_l0.append(l0_vaee(torch.cat(c_val, dim=0)))
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
         if wandb_run is not None:
             wandb_run.log(
                 {f"train/vaee_{k}": v / n_batches for k, v in epoch_terms.items()}
-                | {f"val/vaee_{k}": v / n_val for k, v in val_terms.items()},
+                | {f"val/vaee_{k}": v / n_val for k, v in val_terms.items()}
+                | {
+                    "train/vaee_l0": result.train_l0[-1],
+                    "val/vaee_l0": result.val_l0[-1],
+                },
                 step=epoch + 1,
             )
 
         if val_recon < result.best_val_recon:
             result.best_val_recon = val_recon
+            result.best_l0 = result.val_l0[-1]
             best_state = copy.deepcopy(model.state_dict())
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
 
     model.load_state_dict(best_state)
     model.eval()
-    with torch.inference_mode():
-        c_all = []
-        for batch in typed_dataloader(val_loader):
-            emb = batch.embeddings.to(cfg.device)
-            mask = batch.attention_mask.to(cfg.device)
-            c_all.append(model(_select_tokens(emb, mask)).c)
-        result.best_l0 = l0_vaee(torch.cat(c_all, dim=0))
-
-    if wandb_run is not None:
-        wandb_run.summary.update(
-            {
-                "best_val_recon": result.best_val_recon,
-                "best_l0": result.best_l0,
-            },
-        )
 
     return model, result
 
@@ -318,7 +319,8 @@ def train_sae(  # noqa: PLR0913, PLR0915
 
     for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
-        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0, "l0": 0.0}
+        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        latents_train: list[torch.Tensor] = []
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
             mask = batch.attention_mask.to(cfg.device)
@@ -337,18 +339,18 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 model.normalize_decoder()
             epoch_terms["recon"] += recon_loss.item()
             epoch_terms["l1"] += l1_loss.item()
-            epoch_terms["l0"] += (
-                (out.latents.detach() > 0).float().sum(dim=1).mean().item()
-            )
+            latents_train.append(out.latents.detach())
 
         n_batches = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_batches)
+        result.train_l0.append(l0_sparse(torch.cat(latents_train, dim=0)))
         result.train_breakdown.append(
             {k: v / n_batches for k, v in epoch_terms.items()},
         )
 
         model.eval()
-        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0, "l0": 0.0}
+        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        latents_val: list[torch.Tensor] = []
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 emb = batch.embeddings.to(cfg.device)
@@ -357,41 +359,39 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 out = model(tokens)
                 val_terms["recon"] += F.mse_loss(out.recon, tokens).item()
                 val_terms["l1"] += out.latents.abs().mean().item()
-                val_terms["l0"] += (out.latents > 0).float().sum(dim=1).mean().item()
+                latents_val.append(out.latents)
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
         result.val_recon.append(val_recon)
+        result.val_l0.append(l0_sparse(torch.cat(latents_val, dim=0)))
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
         if wandb_run is not None:
             wandb_run.log(
                 {f"train/sae_{k}": v / n_batches for k, v in epoch_terms.items()}
-                | {f"val/sae_{k}": v / n_val for k, v in val_terms.items()},
+                | {f"val/sae_{k}": v / n_val for k, v in val_terms.items()}
+                | {
+                    "train/sae_l0": result.train_l0[-1],
+                    "val/sae_l0": result.val_l0[-1],
+                },
                 step=_epoch + 1,
             )
 
         if val_recon < result.best_val_recon:
             result.best_val_recon = val_recon
+            result.best_l0 = result.val_l0[-1]
             best_state = copy.deepcopy(model.state_dict())
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
 
     model.load_state_dict(best_state)
     model.eval()
-    with torch.inference_mode():
-        latents_all = []
-        for batch in typed_dataloader(val_loader):
-            emb = batch.embeddings.to(cfg.device)
-            mask = batch.attention_mask.to(cfg.device)
-            latents_all.append(model(_select_tokens(emb, mask)).latents)
-        result.best_l0 = l0_sparse(torch.cat(latents_all, dim=0))
-
-    if wandb_run is not None:
-        wandb_run.summary.update(
-            {
-                "best_val_recon": result.best_val_recon,
-                "best_l0": result.best_l0,
-            },
-        )
 
     return model, result
 
