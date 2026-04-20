@@ -168,7 +168,15 @@ def train_vaee(  # noqa: PLR0913, PLR0915
     result = RunResult(model_name="VAEE", n_concepts=num_embeddings)
     best_state: dict = {}
 
-    for _epoch in trange(cfg.epochs, unit="epoch"):
+    for epoch in trange(cfg.epochs, unit="epoch"):
+        if cfg.vaee_beta_warmup_epochs > 0:
+            effective_beta = cfg.vaee_beta * min(
+                1.0,
+                epoch / cfg.vaee_beta_warmup_epochs,
+            )
+        else:
+            effective_beta = cfg.vaee_beta
+
         model.train()
         epoch_terms: dict[str, float] = {
             "recon": 0.0,
@@ -190,7 +198,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 prototypes=model.prototypes,
                 pi=cfg.vaee_pi,
                 gamma=cfg.vaee_gamma,
-                beta=cfg.vaee_beta,
+                beta=effective_beta,
                 lambda_ent=cfg.vaee_lambda_ent,
             )
             optimizer.zero_grad()
@@ -228,7 +236,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                     prototypes=model.prototypes,
                     pi=cfg.vaee_pi,
                     gamma=cfg.vaee_gamma,
-                    beta=cfg.vaee_beta,
+                    beta=effective_beta,
                     lambda_ent=cfg.vaee_lambda_ent,
                 )
                 val_terms["recon"] += loss_out.recon_loss.item()
@@ -245,7 +253,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             wandb_run.log(
                 {f"train/vaee_{k}": v / n_batches for k, v in epoch_terms.items()}
                 | {f"val/vaee_{k}": v / n_val for k, v in val_terms.items()},
-                step=_epoch + 1,
+                step=epoch + 1,
             )
 
         if val_recon < result.best_val_recon:

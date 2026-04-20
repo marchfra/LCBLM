@@ -56,6 +56,8 @@ class RunConfig:
         vaee_pi: Target Bernoulli activation probability for VAEE sparsity loss.
         vaee_gamma: Coefficient for the conditional KL loss term.
         vaee_beta: Coefficient for the sparsity KL loss term.
+        vaee_beta_warmup_epochs: Number of epochs over which beta is linearly ramped
+            from 0 to vaee_beta. 0 disables warmup (beta is constant throughout).
         vaee_lambda_ent: Coefficient for the entropy regularisation term.
         sae_lambda_l1: L1 sparsity coefficient for both SparseAE variants.
         sae_normalize_decoder: If True, apply decoder column normalisation during
@@ -85,6 +87,7 @@ class RunConfig:
     vaee_pi: float = 0.1
     vaee_gamma: float = 0.01
     vaee_beta: float = 1.0
+    vaee_beta_warmup_epochs: int = 0
     vaee_lambda_ent: float = 0.01
     sae_lambda_l1: float = 1e-3
     sae_normalize_decoder: bool = False
