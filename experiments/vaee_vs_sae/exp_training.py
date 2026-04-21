@@ -447,14 +447,16 @@ def _wandb_init(  # noqa: PLR0913
     _sae_keys = _shared | {"sae_lambda_l1", "sae_normalize_decoder"}
     relevant = _vaee_keys if model_name == "VAEE" else _sae_keys
     cfg_dict = {k: v for k, v in asdict(cfg).items() if k in relevant}
+    enc = cfg.vaee_encoder_type
+    enc_label = f"MLP{cfg.vaee_hidden_dim}" if enc == "mlp" else enc.capitalize()
     if model_name == "VAEE":
-        enc = cfg.vaee_encoder_type
-        enc_label = f"MLP{cfg.vaee_hidden_dim}" if enc == "mlp" else enc.capitalize()
         run_name = f"{enc_label}-VAEE-{sweep_n}x{cfg.vaee_embedding_size}"
     elif model_name == "SparseAE-concept":
         run_name = f"SAE-{n_concepts}"
     elif model_name == "SparseAE-param":
-        run_name = f"SAE-{n_concepts}@{sweep_n}"
+        run_name = (
+            f"SAE-{n_concepts}@{enc_label}-VAEE-{sweep_n}x{cfg.vaee_embedding_size}"
+        )
     else:
         run_name = f"{model_name}-n{sweep_n}"
     return wandb.init(
