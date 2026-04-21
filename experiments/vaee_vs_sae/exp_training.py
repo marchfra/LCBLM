@@ -430,7 +430,8 @@ def _wandb_init(  # noqa: PLR0913
         "seed",
         "num_embeddings_list",
         "skip_vaee",
-        "skip_sae",
+        "skip_sae_concept_matched",
+        "skip_sae_param_matched",
     }
     _vaee_keys = _shared | {
         "vaee_hidden_dim",
@@ -527,6 +528,8 @@ def run_experiment(
         print(f"W&B project: {cfg.wandb_project}  group: {wandb_group}")
 
     for n in cfg.num_embeddings_list:
+        vaee: VAEE | None = None
+
         if not cfg.skip_vaee:
             print(f"\n-- VAEE | num_embeddings={n} --")
             wandb_run = _wandb_init(wandb_group, "VAEE", n, n, cfg, ds_cfg)
@@ -548,7 +551,7 @@ def run_experiment(
                 f"   L0={vaee_result.best_l0:.2f}  val_MSE={vaee_result.best_val_recon:.5f}",  # noqa: E501
             )
 
-        if not cfg.skip_sae:
+        if not cfg.skip_sae_concept_matched:
             print(f"-- SparseAE-concept | latent_dim={n} --")
             wandb_run = _wandb_init(wandb_group, "SparseAE-concept", n, n, cfg, ds_cfg)
             sae_c, sae_c_result = train_sae(
@@ -570,40 +573,45 @@ def run_experiment(
                 f"   L0={sae_c_result.best_l0:.2f}  val_MSE={sae_c_result.best_val_recon:.5f}",  # noqa: E501
             )
 
-            if not cfg.skip_vaee:
-                param_dim = param_matched_latent_dim(vaee, ds_cfg.input_dim)
-                print(
-                    f"-- SparseAE-param | latent_dim={param_dim}"
-                    f" (param-matched to VAEE n={n}) --",
-                )
-                wandb_run = _wandb_init(
-                    wandb_group,
-                    "SparseAE-param",
-                    n,
-                    param_dim,
-                    cfg,
-                    ds_cfg,
-                )
-                sae_p, sae_p_result = train_sae(
-                    param_dim,
-                    "SparseAE-param",
-                    train_ds,
-                    val_ds,
-                    cfg,
-                    ds_cfg,
-                    wandb_run=wandb_run,
-                )
-                sae_p_result.sweep_n = (
-                    n  # n_concepts is param_dim, but belongs to sweep step n
-                )
-                if wandb_run is not None:
-                    _log_model_artifact(wandb_run, sae_p, "SparseAE-param", n)
-                    wandb_run.finish()
-                trained_models.append(("SparseAE-param", n, sae_p))
-                results.append(sae_p_result)
-                print(
-                    f"   L0={sae_p_result.best_l0:.2f}  val_MSE={sae_p_result.best_val_recon:.5f}",  # noqa: E501
-                )
+        if not cfg.skip_sae_param_matched:
+            # Build VAEE without training if we didn't train one, purely to count
+            # params.
+            vaee_for_params = vaee if vaee is not None else build_vaee(n, cfg, ds_cfg)
+            param_dim = param_matched_latent_dim(vaee_for_params, ds_cfg.input_dim)
+            if vaee is None:
+                del vaee_for_params
+            print(
+                f"-- SparseAE-param | latent_dim={param_dim}"
+                f" (param-matched to VAEE n={n}) --",
+            )
+            wandb_run = _wandb_init(
+                wandb_group,
+                "SparseAE-param",
+                n,
+                param_dim,
+                cfg,
+                ds_cfg,
+            )
+            sae_p, sae_p_result = train_sae(
+                param_dim,
+                "SparseAE-param",
+                train_ds,
+                val_ds,
+                cfg,
+                ds_cfg,
+                wandb_run=wandb_run,
+            )
+            sae_p_result.sweep_n = (
+                n  # n_concepts is param_dim, but belongs to sweep step n
+            )
+            if wandb_run is not None:
+                _log_model_artifact(wandb_run, sae_p, "SparseAE-param", n)
+                wandb_run.finish()
+            trained_models.append(("SparseAE-param", n, sae_p))
+            results.append(sae_p_result)
+            print(
+                f"   L0={sae_p_result.best_l0:.2f}  val_MSE={sae_p_result.best_val_recon:.5f}",  # noqa: E501
+            )
 
         print()
     return results, trained_models

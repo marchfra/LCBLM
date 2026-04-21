@@ -20,8 +20,9 @@ vaee_lambda_ent = 0.01
 
 sae_lambda_l1 = 1e-3
 sae_normalize_decoder = true
-# skip_vaee = true   # set to train only SAE models
-# skip_sae = true    # set to train only VAEE
+# skip_vaee = true                  # skip VAEE training
+# skip_sae_concept_matched = true   # skip concept-matched SAE
+# skip_sae_param_matched = true     # skip parameter-matched SAE
 
 # wandb_project = "vaee-vs-sae"       # production runs
 # wandb_project = "vaee-vs-sae-dev"   # exploratory / debug runs
