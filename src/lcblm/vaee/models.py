@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Literal, NamedTuple
 
 import torch
@@ -58,7 +59,8 @@ class VAEE(nn.Module):
         )
 
         enc_out = self.num_embeddings * self.embedding_size
-        # For summed topology the decoder receives a single d-dim vector, not K*d
+        # For summed topology the decoder receives a single embedding_size-dim vector,
+        # not num_embeddings*embedding_size
         dec_in = enc_out if topology == "stacked" else self.embedding_size
 
         match encoder_type:
@@ -96,11 +98,11 @@ class VAEE(nn.Module):
         self._logit_scale = nn.Parameter(torch.log(torch.tensor(10.0)))
 
         # Learnable radius offset b for neg_euclidean metric only.
-        # Initialised to E[||mu - prototype||] ≈ sqrt(2*d) so logits start near 0.
+        # Initialised to E[||mu - prototype||] ≈ sqrt(2*embedding_size) so logits start
+        # near 0.
         if sim_metric == "neg_euclidean":
-            import math
             self._neg_euc_bias = nn.Parameter(
-                torch.full((1,), math.sqrt(2.0 * embedding_size))
+                torch.full((1,), math.sqrt(2.0 * embedding_size)),
             )
 
     @property
@@ -170,17 +172,20 @@ class VAEE(nn.Module):
             Reconstructed output of shape (batch_size, input_dim).
 
         """
-        if self.topology == "summed":
-            z_in = z.sum(dim=1)            # (B, d)
+        if self.topology == "summed":  # noqa: SIM108
+            z_in = z.sum(dim=1)  # (batch_size, embedding_size)
         else:
-            z_in = z.flatten(start_dim=1)  # (B, K*d)
+            z_in = z.flatten(
+                start_dim=1,
+            )  # (batch_size, num_embeddings * embedding_size)
         return self._decoder(z_in)
 
     def decoder_first_weight(self) -> Tensor:
         """Return the weight of the first linear layer in the decoder.
 
-        Only meaningful for the stacked topology, where the weight has shape
-        (out_dim, K * embedding_size) and can be partitioned into K concept blocks.
+        Only meaningful for the stacked topology, where the weight has shape (out_dim,
+        num_embeddings * embedding_size) and can be partitioned into num_embeddings
+        concept blocks.
         """
         first = self._decoder[0]
         if isinstance(first, MLP):
@@ -218,20 +223,24 @@ def compute_decoder_ortho_loss(
 ) -> Tensor:
     """Frobenius orthogonality penalty across decoder concept blocks.
 
-    Partitions the decoder weight matrix into K blocks of width embedding_size
-    and penalises normalised cross-block inner products:
+    Partitions the decoder weight matrix into num_embeddings blocks of width
+    embedding_size and penalises normalised cross-block inner products:
         sum_{i != j} ||Wi^T Wj||_F^2 / (||Wi||_F^2 * ||Wj||_F^2)
 
     Args:
-        weight: First linear layer weights, shape (out_dim, K * embedding_size).
-        num_embeddings: Number of concept slots K.
-        embedding_size: Dimension of each concept embedding d.
+        weight: First linear layer weights, shape (out_dim, num_embeddings *
+            embedding_size).
+        num_embeddings: Number of concept slots.
+        embedding_size: Dimension of each concept embedding.
 
     Returns:
         Scalar penalty tensor.
 
     """
-    blocks = weight.split(embedding_size, dim=1)  # K tensors of shape (out, d)
+    blocks = weight.split(
+        embedding_size,
+        dim=1,
+    )  # num_embeddings tensors of shape (out_dim, embedding_size)
     loss = weight.new_zeros(1)
     for i in range(num_embeddings):
         for j in range(i + 1, num_embeddings):
@@ -261,9 +270,10 @@ def compute_loss(  # noqa: PLR0913
     Args:
         target: The original samples to reconstruct.
         input: The reconstruction of the VAEE model.
-        mu: The output of the VAEE encoder, shape (B, K, d).
-        alpha: Bernoulli activation probabilities, shape (B, K).
-        prototypes: The VAEE's prototypes, shape (K, d).
+        mu: The output of the VAEE encoder, shape (batch_size, num_embeddings,
+            embedding_size).
+        alpha: Bernoulli activation probabilities, shape (batch_size, num_embeddings).
+        prototypes: The VAEE's prototypes, shape (num_embeddings, embedding_size).
         pi: Prior Bernoulli activation probability.
         gamma: Coefficient for the conditional KL loss.
         beta: Coefficient for the sparsity KL loss.
@@ -271,10 +281,10 @@ def compute_loss(  # noqa: PLR0913
         lambda_ortho: Coefficient for the decoder orthogonality penalty.
             Pass 0.0 (default) to disable.
         decoder_weight: First linear layer weight of the decoder, shape
-            (out_dim, K * d). Required when lambda_ortho > 0 and topology is
-            stacked. Pass None to skip the penalty.
-        num_embeddings: K, required when lambda_ortho > 0.
-        embedding_size: d, required when lambda_ortho > 0.
+            (out_dim, num_embeddings * embedding_size). Required when lambda_ortho > 0
+            and topology is stacked. Pass None to skip the penalty.
+        num_embeddings: Required when lambda_ortho > 0.
+        embedding_size: Required when lambda_ortho > 0.
 
     Returns:
         LossOutput with total_loss and all individual terms (unscaled).
@@ -303,7 +313,9 @@ def compute_loss(  # noqa: PLR0913
 
     if lambda_ortho > 0 and decoder_weight is not None:
         ortho_loss = compute_decoder_ortho_loss(
-            decoder_weight, num_embeddings, embedding_size
+            decoder_weight,
+            num_embeddings,
+            embedding_size,
         )
     else:
         ortho_loss = target.new_zeros(1)
@@ -317,7 +329,12 @@ def compute_loss(  # noqa: PLR0913
     )
 
     return LossOutput(
-        total_loss, recon_loss, cond_kl_loss, sparsity_loss, entropy_loss, ortho_loss
+        total_loss,
+        recon_loss,
+        cond_kl_loss,
+        sparsity_loss,
+        entropy_loss,
+        ortho_loss,
     )
 
 
@@ -533,7 +550,7 @@ if __name__ == "__main__":
             for x_val, _ in val_dataloader:
                 x_val = x_val.view(x_val.size(0), -1).to(device)  # noqa: PLW2901
                 x_hat_val, mu_val, alpha_val, c_val = model(x_val)
-                val_loss, val_recon, _, _, _, _ = compute_loss(
+                val_loss, val_recon, *_ = compute_loss(
                     x_val,
                     x_hat_val,
                     mu_val,

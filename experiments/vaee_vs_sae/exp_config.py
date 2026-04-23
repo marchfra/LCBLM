@@ -111,7 +111,7 @@ class RunConfig:
     vaee_encoder_type: Literal["mlp", "linear", "shallow"] = "mlp"
     vaee_embedding_size: int = 16
     vaee_gumbel_temp: float = 0.5
-    vaee_sigma_0: float = 0.
+    vaee_sigma_0: float = 0.0
     vaee_sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine"
     vaee_topology: Literal["stacked", "summed"] = "stacked"
     vaee_pi: float = 0.1
