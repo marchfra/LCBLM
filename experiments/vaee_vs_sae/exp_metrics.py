@@ -8,17 +8,22 @@ if TYPE_CHECKING:
     from torch import Tensor
 
 
-def l0_vaee(c: Tensor) -> float:
+def l0_vaee(c: Tensor, threshold: float = 1e-6) -> float:
     """Mean number of active concepts per token for a VAEE.
 
+    A concept is considered active when its gate value exceeds 0.5.
+    At eval time c = alpha = sigmoid(logits), which is continuous in (0, 1),
+    so thresholding is necessary to obtain a meaningful integer count.
+
     Args:
-        c: Hard binary gate tensor of shape (N, num_embeddings).
+        c: Gate tensor of shape (N, num_embeddings), values in (0, 1).
+        threshold: Minimum threshold to consider an embedding active.
 
     Returns:
         Mean L0 over the N tokens.
 
     """
-    return c.float().sum(dim=1).mean().item()
+    return (c > threshold).float().sum(dim=1).mean().item()
 
 
 def l0_sparse(latents: Tensor) -> float:
