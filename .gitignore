@@ -242,3 +242,5 @@ experiment_outputs/
 experiments/**/*.toml
 !experiments/**/*.example.toml
 /wandb
+/experiments/vaee_vs_sae/wanbd_outputs
+/experiments/vaee_vs_sae/lenovo_outputs
