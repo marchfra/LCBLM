@@ -8,7 +8,7 @@ from torch import Tensor, nn
 from torch.nn.functional import cosine_similarity, mse_loss
 
 from lcblm.embedding_ae.models import MLP
-from lcblm.utils import clamp_0_1
+from lcblm.utils import clamp_0_1, clamp_positive
 
 
 class VAEE(nn.Module):
@@ -144,8 +144,8 @@ class VAEE(nn.Module):
         """
         if self.training:
             # Gumbel-Sigmoid relaxation (soft samples, no STE)
-            u1 = torch.rand_like(logits).clamp_(min=1e-8)
-            u2 = torch.rand_like(logits).clamp_(min=1e-8)
+            u1 = clamp_positive(torch.rand_like(logits))
+            u2 = clamp_positive(torch.rand_like(logits))
             logistic_noise = torch.log(u1) - torch.log(u2)
             c = torch.sigmoid((logits + logistic_noise) / self.gumbel_temp)
 
