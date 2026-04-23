@@ -59,12 +59,29 @@ class RunConfig:
             "shallow".
         vaee_embedding_size: Dimensionality of each prototype embedding vector.
         vaee_gumbel_temp: Gumbel-Sigmoid temperature (lower = more discrete).
+        vaee_sigma_0: Standard deviation of the posterior embedding noise. The
+            continuous latent is always sampled as z = mu + sigma_0 * eps where
+            eps ~ N(0, I), at both train and eval time. Set to 0.0 to disable noise
+            and recover a deterministic encoder.
+        vaee_sim_metric: Similarity function used to compute the Bernoulli gate
+            probability alpha from encoder means and prototypes. "cosine" (default)
+            uses normalised dot product scaled by a learnable 1/tau; "inner_product"
+            uses the raw dot product scaled by the same 1/tau; "neg_euclidean" uses
+            (b - ||mu - h||) / tau where b is a learnable scalar bias.
+        vaee_topology: Decoder input topology. "stacked" (default) flattens the K
+            gated embeddings [c_1 z_1, ..., c_K z_K] into a K*d vector before
+            decoding. "summed" sums them into a single d-dim vector, reducing the
+            decoder input size but allowing destructive interference.
         vaee_pi: Target Bernoulli activation probability for VAEE sparsity loss.
         vaee_gamma: Coefficient for the conditional KL loss term.
         vaee_beta: Coefficient for the sparsity KL loss term.
         vaee_beta_warmup_epochs: Number of epochs over which beta is linearly ramped
             from 0 to vaee_beta. 0 disables warmup (beta is constant throughout).
         vaee_lambda_ent: Coefficient for the entropy regularisation term.
+        vaee_lambda_ortho: Coefficient for the decoder orthogonality penalty. Only
+            applied when topology is "stacked". Penalises normalised cross-block
+            Frobenius inner products of the decoder's first linear weight, enforcing
+            that each concept slot maps to a distinct output subspace. 0.0 disables.
         sae_lambda_l1: L1 sparsity coefficient for both SparseAE variants.
         sae_normalize_decoder: If True, apply decoder column normalisation during
             SparseAE training: gradient projection before optimizer step (keeps Adam
@@ -94,11 +111,15 @@ class RunConfig:
     vaee_encoder_type: Literal["mlp", "linear", "shallow"] = "mlp"
     vaee_embedding_size: int = 16
     vaee_gumbel_temp: float = 0.5
+    vaee_sigma_0: float = 0.
+    vaee_sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine"
+    vaee_topology: Literal["stacked", "summed"] = "stacked"
     vaee_pi: float = 0.1
     vaee_gamma: float = 0.01
     vaee_beta: float = 1.0
     vaee_beta_warmup_epochs: int = 0
     vaee_lambda_ent: float = 0.01
+    vaee_lambda_ortho: float = 0.0
     sae_lambda_l1: float = 1e-3
     sae_normalize_decoder: bool = False
     skip_vaee: bool = False

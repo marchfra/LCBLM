@@ -43,6 +43,9 @@ def build_vaee(num_embeddings: int, cfg: RunConfig, ds_cfg: DatasetConfig) -> VA
         gumbel_temp=cfg.vaee_gumbel_temp,
         output_activation=None,  # nn.Identity — no output range constraint
         encoder_type=cfg.vaee_encoder_type,
+        sigma_0=cfg.vaee_sigma_0,
+        sim_metric=cfg.vaee_sim_metric,
+        topology=cfg.vaee_topology,
     ).to(cfg.device)
 
 
@@ -186,6 +189,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "cond_kl": 0.0,
             "sparsity": 0.0,
             "entropy": 0.0,
+            "ortho": 0.0,
         }
         c_train: list[torch.Tensor] = []
         for batch in typed_dataloader(train_loader):
@@ -194,6 +198,11 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             tokens = _select_tokens(emb, mask)
 
             out = model(tokens)
+            decoder_weight = (
+                model.decoder_first_weight()
+                if cfg.vaee_topology == "stacked" and cfg.vaee_lambda_ortho > 0
+                else None
+            )
             loss_out = compute_loss(
                 target=tokens,
                 input=out.recon,
@@ -204,6 +213,10 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 gamma=cfg.vaee_gamma,
                 beta=effective_beta,
                 lambda_ent=cfg.vaee_lambda_ent,
+                lambda_ortho=cfg.vaee_lambda_ortho,
+                decoder_weight=decoder_weight,
+                num_embeddings=model.num_embeddings,
+                embedding_size=model.embedding_size,
             )
             optimizer.zero_grad()
             loss_out.total_loss.backward()
@@ -212,6 +225,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
             epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
             epoch_terms["entropy"] += loss_out.entropy_loss.item()
+            epoch_terms["ortho"] += loss_out.ortho_loss.item()
             c_train.append(out.c.detach())
 
         n_batches = len(train_loader)
@@ -227,6 +241,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "cond_kl": 0.0,
             "sparsity": 0.0,
             "entropy": 0.0,
+            "ortho": 0.0,
         }
         c_val: list[torch.Tensor] = []
         with torch.inference_mode():
@@ -245,11 +260,20 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                     gamma=cfg.vaee_gamma,
                     beta=effective_beta,
                     lambda_ent=cfg.vaee_lambda_ent,
+                    lambda_ortho=cfg.vaee_lambda_ortho,
+                    decoder_weight=(
+                        model.decoder_first_weight()
+                        if cfg.vaee_topology == "stacked" and cfg.vaee_lambda_ortho > 0
+                        else None
+                    ),
+                    num_embeddings=model.num_embeddings,
+                    embedding_size=model.embedding_size,
                 )
                 val_terms["recon"] += loss_out.recon_loss.item()
                 val_terms["cond_kl"] += loss_out.cond_kl_loss.item()
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
                 val_terms["entropy"] += loss_out.entropy_loss.item()
+                val_terms["ortho"] += loss_out.ortho_loss.item()
                 c_val.append(out.c)
 
         n_val = len(val_loader)
@@ -467,11 +491,15 @@ def _wandb_init(  # noqa: PLR0913
         "vaee_encoder_type",
         "vaee_embedding_size",
         "vaee_gumbel_temp",
+        "vaee_sigma_0",
+        "vaee_sim_metric",
+        "vaee_topology",
         "vaee_pi",
         "vaee_gamma",
         "vaee_beta",
         "vaee_beta_warmup_epochs",
         "vaee_lambda_ent",
+        "vaee_lambda_ortho",
     }
     _sae_keys = _shared | {"sae_lambda_l1", "sae_normalize_decoder"}
     relevant = _vaee_keys if model_name == "VAEE" else _sae_keys
