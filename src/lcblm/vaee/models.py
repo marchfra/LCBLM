@@ -27,6 +27,9 @@ class VAEE(nn.Module):
         output_activation: nn.Module | None = None,
         *,
         encoder_type: Literal["mlp", "linear", "shallow"] = "mlp",
+        sigma_0: float = 1.0,
+        sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine",
+        topology: Literal["stacked", "summed"] = "stacked",
     ) -> None:
         if num_embeddings <= 0:
             msg = "num_embeddings must be non-negative."
@@ -37,35 +40,44 @@ class VAEE(nn.Module):
         if gumbel_temp <= 0:
             msg = "gumbel_temp must be non-negative."
             raise ValueError(msg)
+        if sigma_0 < 0:
+            msg = "sigma_0 must be non-negative."
+            raise ValueError(msg)
 
         super().__init__()
 
         self.num_embeddings = num_embeddings
         self.embedding_size = embedding_size
         self.gumbel_temp = gumbel_temp
+        self.sigma_0 = sigma_0
+        self.sim_metric = sim_metric
+        self.topology = topology
 
         self._output_activation = (
             output_activation if output_activation is not None else nn.Identity()
         )
 
         enc_out = self.num_embeddings * self.embedding_size
+        # For summed topology the decoder receives a single d-dim vector, not K*d
+        dec_in = enc_out if topology == "stacked" else self.embedding_size
+
         match encoder_type:
             case "mlp":
                 self._encoder = MLP(input_dim, hidden_dim, enc_out)
                 self._decoder = nn.Sequential(
-                    MLP(enc_out, hidden_dim, input_dim),
+                    MLP(dec_in, hidden_dim, input_dim),
                     self._output_activation,
                 )
             case "linear":
                 self._encoder = nn.Linear(input_dim, enc_out)
                 self._decoder = nn.Sequential(
-                    nn.Linear(enc_out, input_dim),
+                    nn.Linear(dec_in, input_dim),
                     self._output_activation,
                 )
             case "shallow":
                 self._encoder = nn.Sequential(nn.Linear(input_dim, enc_out), nn.GELU())
                 self._decoder = nn.Sequential(
-                    nn.Linear(enc_out, input_dim),
+                    nn.Linear(dec_in, input_dim),
                     self._output_activation,
                 )
             case _:
@@ -79,14 +91,38 @@ class VAEE(nn.Module):
             torch.randn(self.num_embeddings, self.embedding_size),
         )
 
-        # Learnable inverse temperature (like OpenAI CLIP)
-        # Initializes at 10 which corresponds to tau = 0.1
+        # Learnable inverse temperature (like OpenAI CLIP).
+        # Initializes at 10 which corresponds to tau = 0.1.
         self._logit_scale = nn.Parameter(torch.log(torch.tensor(10.0)))
+
+        # Learnable radius offset b for neg_euclidean metric only.
+        # Initialised to E[||mu - prototype||] ≈ sqrt(2*d) so logits start near 0.
+        if sim_metric == "neg_euclidean":
+            import math
+            self._neg_euc_bias = nn.Parameter(
+                torch.full((1,), math.sqrt(2.0 * embedding_size))
+            )
 
     @property
     def device(self) -> torch.device:
-        """Get the device of the parameters."""
         return next(self.parameters()).device
+
+    def _compute_logits(self, mu: Tensor) -> Tensor:
+        """Compute per-concept logits from encoder means and prototypes."""
+        scale = torch.clamp(self._logit_scale.exp(), min=1.0, max=100.0)
+        match self.sim_metric:
+            case "cosine":
+                sim = cosine_similarity(mu, self.prototypes.unsqueeze(0), dim=-1)
+                return sim * scale
+            case "inner_product":
+                sim = torch.einsum("bke,ke->bk", mu, self.prototypes)
+                return sim * scale
+            case "neg_euclidean":
+                dist = torch.norm(mu - self.prototypes.unsqueeze(0), dim=-1)
+                return (self._neg_euc_bias - dist) * scale
+            case _:
+                msg = f"Unknown sim_metric: {self.sim_metric!r}"
+                raise ValueError(msg)
 
     def encode(self, x: Tensor) -> Tensor:
         mu = self._encoder(x)
@@ -98,56 +134,66 @@ class VAEE(nn.Module):
         logits: Tensor,
         alpha: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        # NOTE: why sampling only during training?
+        """Sample c and z from the approximate posterior.
+
+        During training, c uses the Gumbel-Sigmoid relaxation (soft, no STE) and
+        z = mu + sigma_0 * eps (stochastic).
+        During eval, c = alpha (continuous [0,1]) and z = mu (deterministic).
+        """
         if self.training:
-            # NOTE: is this the same sampling described in the LaTeX document?
-            u1 = torch.rand_like(logits) + 1e-8
-            u2 = torch.rand_like(logits) + 1e-8
+            # Gumbel-Sigmoid relaxation (soft samples, no STE)
+            u1 = torch.rand_like(logits).clamp_(min=1e-8)
+            u2 = torch.rand_like(logits).clamp_(min=1e-8)
             logistic_noise = torch.log(u1) - torch.log(u2)
-            c_soft = torch.sigmoid((logits + logistic_noise) / self.gumbel_temp)
+            c = torch.sigmoid((logits + logistic_noise) / self.gumbel_temp)
+
+            # Stochastic z
+            eps = torch.randn_like(mu)
+            z = mu + self.sigma_0 * eps
         else:
-            c_soft = alpha
+            # Deterministic at eval
+            c = alpha
+            z = mu
 
-        threshold = 0.5
-        c_hard = (c_soft > threshold).float()
-        c = c_hard - c_soft.detach() + c_soft
-
-        # NOTE: is this equivalent to sampling with a Gaussian around mu?
-        z = c.unsqueeze(-1) * mu
+        # Gate z by c
+        z = c.unsqueeze(-1) * z
 
         return z, c
 
     def decode(self, z: Tensor) -> Tensor:
-        """Decode the latent tensor using the decoder.
+        """Decode the latent tensor.
 
         Args:
-            z: Latent tensor to decode. Can have shape (batch_size, num_embeddings *
-                embedding_size) or (batch_size, num_embeddings, embedding_size).
+            z: Shape (batch_size, num_embeddings, embedding_size).
 
         Returns:
-            The reconstructed output from the decoder.
+            Reconstructed output of shape (batch_size, input_dim).
 
         """
-        z_flat = z.flatten(start_dim=1)
-        recon = self._decoder(z_flat)
-        return recon
+        if self.topology == "summed":
+            z_in = z.sum(dim=1)            # (B, d)
+        else:
+            z_in = z.flatten(start_dim=1)  # (B, K*d)
+        return self._decoder(z_in)
+
+    def decoder_first_weight(self) -> Tensor:
+        """Return the weight of the first linear layer in the decoder.
+
+        Only meaningful for the stacked topology, where the weight has shape
+        (out_dim, K * embedding_size) and can be partitioned into K concept blocks.
+        """
+        first = self._decoder[0]
+        if isinstance(first, MLP):
+            return first.linear1.weight
+        return first.weight
 
     def forward(self, x: Tensor) -> Output:
-        # NOTE: shouldn't encoder also predict std? No, std is fixed to a small constant
-        # NOTE: figure out where std is fixed
         mu = self._encoder(x).reshape(-1, self.num_embeddings, self.embedding_size)
-
-        similarity = cosine_similarity(mu, self.prototypes.unsqueeze(0), dim=-1)
-
-        # Apply learnable scaling (clamped to prevent instability)
-        scale = torch.clamp(self._logit_scale.exp(), min=1.0, max=100.0)
-        logits = similarity * scale
+        logits = self._compute_logits(mu)
         alpha = torch.sigmoid(logits)
-
         z, c = self.sample(mu, logits, alpha)
-        x_recon = self.decode(z)
-
-        return self.Output(recon=x_recon, mu=mu, alpha=alpha, c=c)
+        recon = self.decode(z)
+        return self.Output(recon=recon, mu=mu, alpha=alpha, c=c)
 
     def __call__(self, x: Tensor) -> Output:
         return super().__call__(x)
@@ -162,6 +208,37 @@ class LossOutput(NamedTuple):
     cond_kl_loss: Tensor
     sparsity_loss: Tensor
     entropy_loss: Tensor
+    ortho_loss: Tensor
+
+
+def compute_decoder_ortho_loss(
+    weight: Tensor,
+    num_embeddings: int,
+    embedding_size: int,
+) -> Tensor:
+    """Frobenius orthogonality penalty across decoder concept blocks.
+
+    Partitions the decoder weight matrix into K blocks of width embedding_size
+    and penalises normalised cross-block inner products:
+        sum_{i != j} ||Wi^T Wj||_F^2 / (||Wi||_F^2 * ||Wj||_F^2)
+
+    Args:
+        weight: First linear layer weights, shape (out_dim, K * embedding_size).
+        num_embeddings: Number of concept slots K.
+        embedding_size: Dimension of each concept embedding d.
+
+    Returns:
+        Scalar penalty tensor.
+
+    """
+    blocks = weight.split(embedding_size, dim=1)  # K tensors of shape (out, d)
+    loss = weight.new_zeros(1)
+    for i in range(num_embeddings):
+        for j in range(i + 1, num_embeddings):
+            cross = (blocks[i].T @ blocks[j]).norm(p="fro") ** 2
+            denom = (blocks[i].norm(p="fro") ** 2) * (blocks[j].norm(p="fro") ** 2)
+            loss = loss + cross / denom.clamp(min=1e-8)
+    return loss
 
 
 def compute_loss(  # noqa: PLR0913
@@ -174,23 +251,33 @@ def compute_loss(  # noqa: PLR0913
     gamma: float,
     beta: float,
     lambda_ent: float,
+    lambda_ortho: float = 0.0,
+    decoder_weight: Tensor | None = None,
+    num_embeddings: int = 0,
+    embedding_size: int = 0,
 ) -> LossOutput:
     """Compute the full loss for VAEE training.
 
     Args:
         target: The original samples to reconstruct.
         input: The reconstruction of the VAEE model.
-        mu: The output of the VAEE encoder.
-        alpha: The alignment between the mu tensor and the prototypes.
-        prototypes: The VAEE's prototypes.
-        pi: The probability parameter of the prior across-batch Bernoulli distribution.
-        gamma: The regularization factor of the conditional KL loss.
-        beta: The regularization factor of the sparsity KL loss.
-        lambda_ent: The regularization of the entropy loss.
+        mu: The output of the VAEE encoder, shape (B, K, d).
+        alpha: Bernoulli activation probabilities, shape (B, K).
+        prototypes: The VAEE's prototypes, shape (K, d).
+        pi: Prior Bernoulli activation probability.
+        gamma: Coefficient for the conditional KL loss.
+        beta: Coefficient for the sparsity KL loss.
+        lambda_ent: Coefficient for the entropy regularisation.
+        lambda_ortho: Coefficient for the decoder orthogonality penalty.
+            Pass 0.0 (default) to disable.
+        decoder_weight: First linear layer weight of the decoder, shape
+            (out_dim, K * d). Required when lambda_ortho > 0 and topology is
+            stacked. Pass None to skip the penalty.
+        num_embeddings: K, required when lambda_ortho > 0.
+        embedding_size: d, required when lambda_ortho > 0.
 
     Returns:
-        A tuple containing the total loss and a breakdown of all the loss components
-        (not multiplied by their hyperparameter).
+        LossOutput with total_loss and all individual terms (unscaled).
 
     """
     recon_loss = mse_loss(input, target)
@@ -214,14 +301,24 @@ def compute_loss(  # noqa: PLR0913
     entropy = term_1 + term_2
     entropy_loss = entropy.sum(dim=-1).mean()
 
+    if lambda_ortho > 0 and decoder_weight is not None:
+        ortho_loss = compute_decoder_ortho_loss(
+            decoder_weight, num_embeddings, embedding_size
+        )
+    else:
+        ortho_loss = target.new_zeros(1)
+
     total_loss = (
         recon_loss
         + gamma * cond_kl_loss
         + beta * sparsity_loss
         + lambda_ent * entropy_loss
+        + lambda_ortho * ortho_loss
     )
 
-    return LossOutput(total_loss, recon_loss, cond_kl_loss, sparsity_loss, entropy_loss)
+    return LossOutput(
+        total_loss, recon_loss, cond_kl_loss, sparsity_loss, entropy_loss, ortho_loss
+    )
 
 
 # Test training loop
@@ -400,7 +497,7 @@ if __name__ == "__main__":
 
             x_hat, mu, alpha, c = model(x)
 
-            loss, recon, cond_kl, sparsity, entropy = compute_loss(
+            loss, recon, cond_kl, sparsity, entropy, ortho = compute_loss(
                 x,
                 x_hat,
                 mu,
@@ -436,7 +533,7 @@ if __name__ == "__main__":
             for x_val, _ in val_dataloader:
                 x_val = x_val.view(x_val.size(0), -1).to(device)  # noqa: PLW2901
                 x_hat_val, mu_val, alpha_val, c_val = model(x_val)
-                val_loss, val_recon, _, _, _ = compute_loss(
+                val_loss, val_recon, _, _, _, _ = compute_loss(
                     x_val,
                     x_hat_val,
                     mu_val,

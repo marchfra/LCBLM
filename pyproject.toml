@@ -30,6 +30,7 @@ dependencies = [
 [project.scripts]
 embae-exp = "experiments.embae_comparison.exp_cli:main"
 vaee-exp = "experiments.vaee_vs_sae.exp_cli:main"
+vaee-mnist = "experiments.vaee_mnist.exp_cli:main"
 
 [dependency-groups]
 dev = [
