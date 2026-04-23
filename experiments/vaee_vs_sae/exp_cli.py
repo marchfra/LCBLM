@@ -26,7 +26,7 @@ from lcblm.utils import get_device
 from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
 
-from .exp_config import DatasetConfig, RunConfig
+from .exp_config import RunConfig
 from .exp_data import DATASET_REGISTRY
 from .exp_io import load_results, save_config_json, save_results
 from .exp_plotting import plot_l0_recon, plot_learning_curves
@@ -57,16 +57,16 @@ def _load_run_config(raw: dict) -> RunConfig:
     return RunConfig(**filtered, device=get_device())
 
 
-def _out_dir(base_dir: Path, ds_cfg: DatasetConfig, run_cfg: RunConfig) -> Path:
-    p = base_dir / ds_cfg.name / f"epochs_{run_cfg.epochs}" / f"lr_{run_cfg.lr:.0e}"
+def _out_dir(base_dir: Path, group: str) -> Path:
+    p = base_dir / group
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def _checkpoint_path(out_dir: Path, model_name: str, n_concepts: int) -> Path:
+def _checkpoint_path(out_dir: Path, run_name: str) -> Path:
     ckpt_dir = out_dir / "checkpoints"
     ckpt_dir.mkdir(exist_ok=True)
-    return ckpt_dir / f"{model_name.lower().replace('-', '_')}_{n_concepts:03d}.pt"
+    return ckpt_dir / f"{run_name}.pt"
 
 
 def _scaler_path(out_dir: Path) -> Path:
@@ -108,14 +108,14 @@ def cmd_run(args: argparse.Namespace) -> None:
         f"Train sentences: {train_ds.num_sentences}  Val sentences: {val_ds.num_sentences}\n",  # noqa: E501
     )
 
-    results, trained_models = run_experiment(train_ds, val_ds, run_cfg, ds_cfg)
+    results, trained_models, group = run_experiment(train_ds, val_ds, run_cfg, ds_cfg)
 
     base = (
         Path(args.out_dir)
         if args.out_dir
         else Path(__file__).parent / "experiment_outputs"
     )
-    out_dir = _out_dir(base, ds_cfg, run_cfg)
+    out_dir = _out_dir(base, group)
 
     save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
     save_config_json(run_cfg, ds_cfg, out_dir / "config.json")
@@ -124,8 +124,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         pickle.dump(scaler, f)
     print(f"Saved scaler to {_scaler_path(out_dir).name}")
 
-    for model_name, n_concepts, model in trained_models:
-        ckpt_path = _checkpoint_path(out_dir, model_name, n_concepts)
+    for run_name, model in trained_models:
+        ckpt_path = _checkpoint_path(out_dir, run_name)
         torch.save(model.state_dict(), ckpt_path)
         print(f"Saved checkpoint {ckpt_path.name}")
 

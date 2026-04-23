@@ -400,6 +400,35 @@ def train_sae(  # noqa: PLR0913, PLR0915
 # ── Experiment runner ─────────────────────────────────────────────────────────
 
 
+def _run_name(
+    model_name: str,
+    sweep_n: int,
+    n_concepts: int,
+    cfg: RunConfig,
+) -> str:
+    """Return the human-readable run name for a (model, sweep_n) training job.
+
+    This name is used both as the W&B run name and as the local checkpoint filename,
+    so the two are always in sync.
+
+    Args:
+        model_name: "VAEE", "SparseAE-concept", or "SparseAE-param".
+        sweep_n: The num_embeddings value from the sweep axis.
+        n_concepts: Actual latent dimension of the model being trained.
+        cfg: Run hyperparameters (provides encoder type / sizes).
+
+    """
+    enc = cfg.vaee_encoder_type
+    enc_label = f"MLP{cfg.vaee_hidden_dim}" if enc == "mlp" else enc.capitalize()
+    if model_name == "VAEE":
+        return f"{enc_label}-VAEE-{sweep_n}x{cfg.vaee_embedding_size}"
+    if model_name == "SparseAE-concept":
+        return f"SAE-{n_concepts}"
+    if model_name == "SparseAE-param":
+        return f"SAE-{n_concepts}@{enc_label}-VAEE-{sweep_n}x{cfg.vaee_embedding_size}"
+    return f"{model_name}-n{sweep_n}"
+
+
 def _wandb_init(  # noqa: PLR0913
     group: str,
     model_name: str,
@@ -447,18 +476,7 @@ def _wandb_init(  # noqa: PLR0913
     _sae_keys = _shared | {"sae_lambda_l1", "sae_normalize_decoder"}
     relevant = _vaee_keys if model_name == "VAEE" else _sae_keys
     cfg_dict = {k: v for k, v in asdict(cfg).items() if k in relevant}
-    enc = cfg.vaee_encoder_type
-    enc_label = f"MLP{cfg.vaee_hidden_dim}" if enc == "mlp" else enc.capitalize()
-    if model_name == "VAEE":
-        run_name = f"{enc_label}-VAEE-{sweep_n}x{cfg.vaee_embedding_size}"
-    elif model_name == "SparseAE-concept":
-        run_name = f"SAE-{n_concepts}"
-    elif model_name == "SparseAE-param":
-        run_name = (
-            f"SAE-{n_concepts}@{enc_label}-VAEE-{sweep_n}x{cfg.vaee_embedding_size}"
-        )
-    else:
-        run_name = f"{model_name}-n{sweep_n}"
+    run_name = _run_name(model_name, sweep_n, n_concepts, cfg)
     return wandb.init(
         project=cfg.wandb_project,
         group=group,
@@ -502,7 +520,7 @@ def run_experiment(
     val_ds: NextTokenDataset,
     cfg: RunConfig,
     ds_cfg: DatasetConfig,
-) -> tuple[list[RunResult], list[tuple[str, int, nn.Module]]]:
+) -> tuple[list[RunResult], list[tuple[str, nn.Module]], str]:
     """Run the full sweep over num_embeddings for all model types.
 
     For each value in cfg.num_embeddings_list, trains:
@@ -518,15 +536,19 @@ def run_experiment(
 
     Returns:
         results: One RunResult per (model, n) combination.
-        trained_models: Corresponding (model_name, n_concepts, model) triples.
+        trained_models: Corresponding (run_name, model) pairs. ``run_name`` is the
+            human-readable identifier used for both the W&B run and the local
+            checkpoint filename.
+        group: Experiment group name (``{dataset}_{timestamp}``), used as the
+            local output directory name.
 
     """
     results: list[RunResult] = []
-    trained_models: list[tuple[str, int, nn.Module]] = []
+    trained_models: list[tuple[str, nn.Module]] = []
 
-    wandb_group = "None"
+    # Always compute a group name — it doubles as the local output directory.
+    wandb_group = f"{ds_cfg.name}_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}"
     if cfg.wandb_project is not None:
-        wandb_group = f"{ds_cfg.name}_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}"
         print(f"W&B project: {cfg.wandb_project}  group: {wandb_group}")
 
     for n in cfg.num_embeddings_list:
@@ -547,7 +569,7 @@ def run_experiment(
             if wandb_run is not None:
                 _log_model_artifact(wandb_run, vaee, "VAEE", n)
                 wandb_run.finish()
-            trained_models.append(("VAEE", n, vaee))
+            trained_models.append((_run_name("VAEE", n, n, cfg), vaee))
             results.append(vaee_result)
             print(
                 f"   L0={vaee_result.best_l0:.2f}  val_MSE={vaee_result.best_val_recon:.5f}",  # noqa: E501
@@ -569,7 +591,7 @@ def run_experiment(
             if wandb_run is not None:
                 _log_model_artifact(wandb_run, sae_c, "SparseAE-concept", n)
                 wandb_run.finish()
-            trained_models.append(("SparseAE-concept", n, sae_c))
+            trained_models.append((_run_name("SparseAE-concept", n, n, cfg), sae_c))
             results.append(sae_c_result)
             print(
                 f"   L0={sae_c_result.best_l0:.2f}  val_MSE={sae_c_result.best_val_recon:.5f}",  # noqa: E501
@@ -609,11 +631,13 @@ def run_experiment(
             if wandb_run is not None:
                 _log_model_artifact(wandb_run, sae_p, "SparseAE-param", n)
                 wandb_run.finish()
-            trained_models.append(("SparseAE-param", n, sae_p))
+            trained_models.append(
+                (_run_name("SparseAE-param", n, param_dim, cfg), sae_p),
+            )
             results.append(sae_p_result)
             print(
                 f"   L0={sae_p_result.best_l0:.2f}  val_MSE={sae_p_result.best_val_recon:.5f}",  # noqa: E501
             )
 
         print()
-    return results, trained_models
+    return results, trained_models, wandb_group
