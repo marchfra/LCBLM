@@ -21,8 +21,6 @@ from lcblm.sae_utils.dataset import compute_tied_bias
 from lcblm.utils.data import NextTokenDataset, typed_dataloader
 from lcblm.vaee.models import VAEE, compute_loss
 
-from .exp_metrics import l0_sparse, l0_vaee
-
 if TYPE_CHECKING:
     from torch import Tensor
     from wandb.sdk.wandb_run import Run as WandbRun
@@ -191,7 +189,8 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "entropy": 0.0,
             "ortho": 0.0,
         }
-        c_train: list[torch.Tensor] = []
+        train_l0_sum = 0.0
+        train_l0_count = 0
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
             mask = batch.attention_mask.to(cfg.device)
@@ -226,11 +225,13 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
             epoch_terms["entropy"] += loss_out.entropy_loss.item()
             epoch_terms["ortho"] += loss_out.ortho_loss.item()
-            c_train.append(out.c.detach())
+            with torch.no_grad():
+                train_l0_sum += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                train_l0_count += out.c.shape[0]
 
         n_batches = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_batches)
-        result.train_l0.append(l0_vaee(torch.cat(c_train, dim=0)))
+        result.train_l0.append(train_l0_sum / train_l0_count)
         result.train_breakdown.append(
             {k: v / n_batches for k, v in epoch_terms.items()},
         )
@@ -243,7 +244,8 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "entropy": 0.0,
             "ortho": 0.0,
         }
-        c_val: list[torch.Tensor] = []
+        val_l0_sum = 0.0
+        val_l0_count = 0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 emb = batch.embeddings.to(cfg.device)
@@ -274,12 +276,13 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
                 val_terms["entropy"] += loss_out.entropy_loss.item()
                 val_terms["ortho"] += loss_out.ortho_loss.item()
-                c_val.append(out.c)
+                val_l0_sum += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                val_l0_count += out.c.shape[0]
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
         result.val_recon.append(val_recon)
-        result.val_l0.append(l0_vaee(torch.cat(c_val, dim=0)))
+        result.val_l0.append(val_l0_sum / val_l0_count)
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
         if wandb_run is not None:
@@ -345,7 +348,8 @@ def train_sae(  # noqa: PLR0913, PLR0915
     for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
-        latents_train: list[torch.Tensor] = []
+        train_l0_sum = 0.0
+        train_l0_count = 0
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
             mask = batch.attention_mask.to(cfg.device)
@@ -364,18 +368,21 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 model.normalize_decoder()
             epoch_terms["recon"] += recon_loss.item()
             epoch_terms["l1"] += l1_loss.item()
-            latents_train.append(out.latents.detach())
+            with torch.no_grad():
+                train_l0_sum += (out.latents > 0).float().sum(dim=1).sum().item()
+                train_l0_count += out.latents.shape[0]
 
         n_batches = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_batches)
-        result.train_l0.append(l0_sparse(torch.cat(latents_train, dim=0)))
+        result.train_l0.append(train_l0_sum / train_l0_count)
         result.train_breakdown.append(
             {k: v / n_batches for k, v in epoch_terms.items()},
         )
 
         model.eval()
         val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
-        latents_val: list[torch.Tensor] = []
+        val_l0_sum = 0.0
+        val_l0_count = 0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 emb = batch.embeddings.to(cfg.device)
@@ -384,12 +391,13 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 out = model(tokens)
                 val_terms["recon"] += F.mse_loss(out.recon, tokens).item()
                 val_terms["l1"] += out.latents.abs().mean().item()
-                latents_val.append(out.latents)
+                val_l0_sum += (out.latents > 0).float().sum(dim=1).sum().item()
+                val_l0_count += out.latents.shape[0]
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
         result.val_recon.append(val_recon)
-        result.val_l0.append(l0_sparse(torch.cat(latents_val, dim=0)))
+        result.val_l0.append(val_l0_sum / val_l0_count)
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
         if wandb_run is not None:
