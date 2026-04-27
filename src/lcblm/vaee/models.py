@@ -1,3 +1,4 @@
+# ruff: noqa: N806
 from __future__ import annotations
 
 import math
@@ -216,22 +217,30 @@ class LossOutput(NamedTuple):
     ortho_loss: Tensor
 
 
-def compute_decoder_ortho_loss(
+def _compute_decoder_ortho_loss_slow(
     weight: Tensor,
     num_embeddings: int,
     embedding_size: int,
 ) -> Tensor:
     """Frobenius orthogonality penalty across decoder concept blocks.
 
-    Partitions the decoder weight matrix into num_embeddings blocks of width
-    embedding_size and penalises normalised cross-block inner products:
-        sum_{i != j} ||Wi^T Wj||_F^2 / (||Wi||_F^2 * ||Wj||_F^2)
+    Do not use this in training — prefer compute_decoder_ortho_loss.
+    This implementation uses a Python double loop over K(K-1)/2 pairs, which
+    serialises thousands of CUDA kernel launches per step and is prohibitively
+    slow for large K.
+
+    Partitions the decoder weight matrix into K = num_embeddings blocks Wi of
+    shape (out_dim, embedding_size) and computes:
+
+        sum_{i < j} ||Wi_n^T Wj_n||_F^2
+
+    where Wi_n = Wi / ||Wi||_F is the Frobenius-normalised i-th block.
 
     Args:
         weight: First linear layer weights, shape (out_dim, num_embeddings *
             embedding_size).
-        num_embeddings: Number of concept slots.
-        embedding_size: Dimension of each concept embedding.
+        num_embeddings: Number of concept slots K.
+        embedding_size: Dimension of each concept embedding E.
 
     Returns:
         Scalar penalty tensor.
@@ -248,6 +257,71 @@ def compute_decoder_ortho_loss(
             denom = (blocks[i].norm(p="fro") ** 2) * (blocks[j].norm(p="fro") ** 2)
             loss = loss + cross / denom.clamp(min=1e-8)
     return loss
+
+
+def compute_decoder_ortho_loss(
+    weight: Tensor,
+    num_embeddings: int,
+    embedding_size: int,
+) -> Tensor:
+    """Frobenius orthogonality penalty across decoder concept blocks.
+
+    Partitions the decoder weight matrix into K = num_embeddings blocks Wi of
+    shape (out_dim, embedding_size) and computes:
+
+        sum_{i < j} ||Wi_n^T Wj_n||_F^2
+
+    where Wi_n = Wi / ||Wi||_F is the Frobenius-normalised i-th block.
+
+    The sum is evaluated without a Python loop using the identity:
+
+        ||A^T B||_F^2 = <AA^T, BB^T>_F  (Frobenius inner product)
+
+    Summing over all pairs yields:
+
+        sum_{i<j} ||Wi_n^T Wj_n||_F^2
+            = ( ||V V^T||_F^2 - sum_i ||Wi_n^T Wi_n||_F^2 ) / 2
+
+    where V = [W0_n | W1_n | ... | W_{K-1}_n] has shape (out_dim, K*E).
+    The two terms are computed with a single (out_dim, out_dim) matmul and a
+    single batch matmul of shape (K, E, out_dim) x (K, out_dim, E).
+
+    Args:
+        weight: First linear layer weights, shape (out_dim, num_embeddings *
+            embedding_size).
+        num_embeddings: Number of concept slots K.
+        embedding_size: Dimension of each concept embedding E.
+
+    Returns:
+        Scalar penalty tensor.
+
+    """
+    D = weight.shape[0]
+    K, E = num_embeddings, embedding_size
+
+    # (out_dim, K*E) → (K, out_dim, E): one block per concept
+    blocks = weight.reshape(D, K, E).permute(1, 0, 2)
+
+    # Frobenius-normalise each block: Wn[i] = W[i] / ||W[i]||_F
+    block_norms = blocks.norm(dim=(1, 2), keepdim=True).clamp(min=1e-8)
+    blocks_n = blocks / block_norms  # (K, D, E)
+
+    # V: all normalised blocks column-concatenated, shape (D, K*E)
+    V = blocks_n.permute(1, 0, 2).reshape(D, K * E)
+
+    # Total Gram: G = V V^T, shape (D, D) - one large matmul instead of K(K-1)/2 small
+    # ones
+    G = V @ V.T
+    total_sq = G.pow(2).sum()
+
+    # Diagonal correction: sum_i ||Wn[i]^T Wn[i]||_F^2
+    # Identity: ||W W^T||_F^2 = ||W^T W||_F^2 (same singular values), so we use the
+    # smaller (E, E) matrices via a single batch matmul
+    Gi = torch.bmm(blocks_n.permute(0, 2, 1), blocks_n)  # (K, E, E)
+    diag_sq = Gi.pow(2).sum()
+
+    # sum_{i<j} ||Wn[i]^T Wn[j]||_F^2 = (total - diagonal) / 2
+    return (total_sq - diag_sq) / 2
 
 
 def compute_loss(  # noqa: PLR0913
