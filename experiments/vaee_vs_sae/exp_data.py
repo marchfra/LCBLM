@@ -13,9 +13,8 @@ from typing import TYPE_CHECKING
 import torch
 from sklearn.preprocessing import StandardScaler
 
+from experiments.vaee_vs_sae.exp_config import DatasetConfig
 from lcblm.utils.data import NextTokenDataset
-
-from .exp_config import DatasetConfig
 
 if TYPE_CHECKING:
     from collections.abc import Callable

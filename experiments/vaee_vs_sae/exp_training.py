@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from torch import Tensor
     from wandb.sdk.wandb_run import Run as WandbRun
 
-    from .exp_config import DatasetConfig, RunConfig
+    from experiments.vaee_vs_sae.exp_config import DatasetConfig, RunConfig
 
 
 # ── Model builders ────────────────────────────────────────────────────────────

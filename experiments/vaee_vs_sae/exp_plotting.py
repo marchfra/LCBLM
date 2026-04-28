@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from .exp_config import DatasetConfig, RunConfig
-    from .exp_training import RunResult
+    from experiments.vaee_vs_sae.exp_config import DatasetConfig, RunConfig
+    from experiments.vaee_vs_sae.exp_training import RunResult
 
 
 COLORS = {

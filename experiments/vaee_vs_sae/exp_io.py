@@ -17,10 +17,9 @@ import dataclasses
 import json
 from typing import TYPE_CHECKING
 
+from experiments.vaee_vs_sae.exp_config import DatasetConfig, RunConfig
+from experiments.vaee_vs_sae.exp_training import RunResult
 from lcblm.utils import get_device
-
-from .exp_config import DatasetConfig, RunConfig
-from .exp_training import RunResult
 
 if TYPE_CHECKING:
     from pathlib import Path

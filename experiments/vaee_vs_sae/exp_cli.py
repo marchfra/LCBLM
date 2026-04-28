@@ -24,15 +24,14 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from experiments.vaee_vs_sae.exp_config import DatasetConfig, RunConfig
+from experiments.vaee_vs_sae.exp_data import DATASET_REGISTRY
+from experiments.vaee_vs_sae.exp_io import load_results, save_config_json, save_results
+from experiments.vaee_vs_sae.exp_plotting import plot_l0_recon, plot_learning_curves
+from experiments.vaee_vs_sae.exp_training import run_experiment
 from lcblm.utils import get_device
 from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
-
-from .exp_config import DatasetConfig, RunConfig
-from .exp_data import DATASET_REGISTRY
-from .exp_io import load_results, save_config_json, save_results
-from .exp_plotting import plot_l0_recon, plot_learning_curves
-from .exp_training import run_experiment
 
 if TYPE_CHECKING:
     from sklearn.preprocessing import StandardScaler
