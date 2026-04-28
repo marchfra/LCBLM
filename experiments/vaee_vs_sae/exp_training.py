@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -170,7 +169,6 @@ def train_vaee(  # noqa: PLR0913, PLR0915
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
     result = RunResult(model_name="VAEE", n_concepts=num_embeddings)
-    best_state: dict = {}
 
     for epoch in trange(cfg.epochs, unit="epoch"):
         if cfg.vaee_beta_warmup_epochs > 0:
@@ -299,7 +297,9 @@ def train_vaee(  # noqa: PLR0913, PLR0915
         if val_recon < result.best_val_recon:
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
-            best_state = copy.deepcopy(model.state_dict())
+            best_state = {
+                k: v.detach().clone().cpu() for k, v in model.state_dict().items()
+            }
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
@@ -343,7 +343,6 @@ def train_sae(  # noqa: PLR0913, PLR0915
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
     result = RunResult(model_name=model_name, n_concepts=latent_dim)
-    best_state: dict = {}
 
     for _epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
@@ -414,7 +413,9 @@ def train_sae(  # noqa: PLR0913, PLR0915
         if val_recon < result.best_val_recon:
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
-            best_state = copy.deepcopy(model.state_dict())
+            best_state = {
+                k: v.detach().clone().cpu() for k, v in model.state_dict().items()
+            }
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
