@@ -88,6 +88,13 @@ class RunConfig:
             momentum clean) and re-normalisation after (corrects floating-point drift).
             Fixes the shrinkage problem where encoder weights shrink and decoder weights
             grow to reduce L1 without actually increasing sparsity.
+        early_stopping_patience: Number of consecutive epochs with no improvement in
+            validation reconstruction MSE before training is halted. 0 disables early
+            stopping and always trains for the full number of epochs.
+        early_stopping_min_delta: Minimum decrease in validation reconstruction MSE
+            required to count as an improvement. Epochs where the loss decreases by
+            less than this value are treated as no-improvement for patience counting.
+            Ignored when early_stopping_patience is 0.
         skip_vaee: If True, skip training the VAEE. The VAEE is still instantiated
             (but not trained) when skip_sae_param_matched is False, so that the
             parameter-matched latent_dim can be computed.
@@ -122,6 +129,8 @@ class RunConfig:
     vaee_lambda_ortho: float = 0.0
     sae_lambda_l1: float = 1e-3
     sae_normalize_decoder: bool = False
+    early_stopping_patience: int = 0
+    early_stopping_min_delta: float = 0.0
     skip_vaee: bool = False
     skip_sae_concept_matched: bool = False
     skip_sae_param_matched: bool = False

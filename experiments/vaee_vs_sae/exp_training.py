@@ -169,6 +169,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
     result = RunResult(model_name="VAEE", n_concepts=num_embeddings)
+    epochs_no_improve = 0
 
     for epoch in trange(cfg.epochs, unit="epoch"):
         if cfg.vaee_beta_warmup_epochs > 0:
@@ -187,7 +188,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "entropy": 0.0,
             "ortho": 0.0,
         }
-        train_l0_sum = 0.0
+        train_l0_sum = 0
         train_l0_count = 0
         for batch in typed_dataloader(train_loader):
             emb = batch.embeddings.to(cfg.device)
@@ -242,7 +243,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "entropy": 0.0,
             "ortho": 0.0,
         }
-        val_l0_sum = 0.0
+        val_l0_sum = 0
         val_l0_count = 0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
@@ -294,12 +295,13 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 step=epoch + 1,
             )
 
-        if val_recon < result.best_val_recon:
+        if val_recon < result.best_val_recon - cfg.early_stopping_min_delta:
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
             best_state = {
                 k: v.detach().clone().cpu() for k, v in model.state_dict().items()
             }
+            epochs_no_improve = 0
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
@@ -307,6 +309,17 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                         "best_l0": result.best_l0,
                     },
                 )
+        else:
+            epochs_no_improve += 1
+            if (
+                cfg.early_stopping_patience > 0
+                and epochs_no_improve >= cfg.early_stopping_patience
+            ):
+                print(
+                    f"   Early stopping at epoch {epoch + 1} (no improvement for "
+                    f"{epochs_no_improve} epochs)",
+                )
+                break
 
     model.load_state_dict(best_state)
     model.eval()
@@ -343,8 +356,9 @@ def train_sae(  # noqa: PLR0913, PLR0915
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
     result = RunResult(model_name=model_name, n_concepts=latent_dim)
+    epochs_no_improve = 0
 
-    for _epoch in trange(cfg.epochs, unit="epoch"):
+    for epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
         epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
         train_l0_sum = 0.0
@@ -407,15 +421,16 @@ def train_sae(  # noqa: PLR0913, PLR0915
                     "train/sae_l0": result.train_l0[-1],
                     "val/sae_l0": result.val_l0[-1],
                 },
-                step=_epoch + 1,
+                step=epoch + 1,
             )
 
-        if val_recon < result.best_val_recon:
+        if val_recon < result.best_val_recon - cfg.early_stopping_min_delta:
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
             best_state = {
                 k: v.detach().clone().cpu() for k, v in model.state_dict().items()
             }
+            epochs_no_improve = 0
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
@@ -423,6 +438,17 @@ def train_sae(  # noqa: PLR0913, PLR0915
                         "best_l0": result.best_l0,
                     },
                 )
+        else:
+            epochs_no_improve += 1
+            if (
+                cfg.early_stopping_patience > 0
+                and epochs_no_improve >= cfg.early_stopping_patience
+            ):
+                print(
+                    f"   Early stopping at epoch {epoch + 1} (no improvement for "
+                    f"{epochs_no_improve} epochs)",
+                )
+                break
 
     model.load_state_dict(best_state)
     model.eval()
@@ -491,6 +517,8 @@ def _wandb_init(  # noqa: PLR0913
         "batch_size",
         "seed",
         "num_embeddings_list",
+        "early_stopping_patience",
+        "early_stopping_min_delta",
         "skip_vaee",
         "skip_sae_concept_matched",
         "skip_sae_param_matched",
