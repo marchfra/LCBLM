@@ -13,6 +13,7 @@ class Sentence(NamedTuple):
     embeddings: Tensor
     next_token_ids: Tensor
     next_attention_mask: Tensor
+    word_ids: Tensor | None = None
 
 
 class NextTokenDataset(Dataset[Sentence]):
@@ -24,6 +25,7 @@ class NextTokenDataset(Dataset[Sentence]):
         attention_mask: Tensor,
         embeddings: Tensor,
         eos_token_id: int,
+        word_ids: Tensor | None = None,
     ) -> None:
         """Initialize the dataset with input token IDs and their LLM embeddings.
 
@@ -34,6 +36,9 @@ class NextTokenDataset(Dataset[Sentence]):
             embeddings: A 3D tensor of embeddings with shape (num_sentences, seq_length,
                 embedding_dim).
             eos_token_id: The token ID used to denote end-of-sequence.
+            word_ids: Optional 2D integer tensor of shape (num_sentences, seq_length)
+                mapping each token to its word index. -1 indicates a special token
+                (BOS, EOS, PAD). None for datasets extracted before word_ids were added.
 
         Raises:
             ValueError: If input_ids is not 2D, embeddings is not 3D, or their first two
@@ -54,6 +59,7 @@ class NextTokenDataset(Dataset[Sentence]):
         self.attention_mask = attention_mask.bool()
         self.eos_token_id = eos_token_id
         self.embeddings = embeddings.float()
+        self.word_ids = word_ids
 
         eos_col = torch.full(
             (input_ids.size(0), 1),
@@ -96,6 +102,7 @@ class NextTokenDataset(Dataset[Sentence]):
                 embeddings=self.embeddings[index],
                 next_token_ids=self._next_token_ids[index],
                 next_attention_mask=self.attention_mask[index],
+                word_ids=self.word_ids[index] if self.word_ids is not None else None,
             )
 
         if isinstance(index, (list, range)):
