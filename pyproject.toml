@@ -25,6 +25,7 @@ dependencies = [
     "huggingface-hub==1.4.1",
     "scikit-learn>=1.8.0",
     "wandb>=0.26.0",
+    "accelerate>=1.13.0",
 ]
 
 [project.scripts]
