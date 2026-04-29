@@ -226,7 +226,7 @@ def _process_split(  # noqa: PLR0913
     tokenizer: PreTrainedTokenizerBase,
     llm: PreTrainedModel,
     device: torch.device,
-    max_length: int,
+    max_length: int | None,
     stride: int | None,
     batch_size: int,
     tok_batch_size: int,
@@ -237,11 +237,19 @@ def _process_split(  # noqa: PLR0913
     texts: list[str] = ds[text_column]
     print(f"\n--- {split}: {len(texts)} documents ---")
 
+    effective_max_length = _infer_max_length(
+        texts,
+        tokenizer,
+        tok_batch_size,
+        max_length,
+    )
+    print(f"    max_length={effective_max_length}")
+
     if stride is None:
         ids, masks, wids = _tokenize_truncate(
             texts,
             tokenizer,
-            max_length,
+            effective_max_length,
             tok_batch_size,
             include_word_ids,
         )
@@ -249,7 +257,7 @@ def _process_split(  # noqa: PLR0913
         ids, masks, wids = _tokenize_stride(
             texts,
             tokenizer,
-            max_length,
+            effective_max_length,
             stride,
             include_word_ids=include_word_ids,
         )
@@ -275,7 +283,7 @@ def _process_split(  # noqa: PLR0913
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
-def main() -> None:  # noqa: C901, PLR0915
+def main() -> None:  # noqa: C901
     load_dotenv()
 
     parser = argparse.ArgumentParser(
@@ -403,18 +411,6 @@ def main() -> None:  # noqa: C901, PLR0915
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Infer max_length from data (fast pass before loading the heavy model)
-    all_texts: list[str] = []
-    for ds in splits_to_process.values():
-        all_texts.extend(ds[args.text_column])
-    max_length = _infer_max_length(
-        all_texts,
-        tokenizer,
-        args.tok_batch_size,
-        args.max_length,
-    )
-    print(f"Using max_length={max_length}")
-
     # Load LLM
     print(f"Loading model: {args.model}")
     device = get_device()
@@ -438,7 +434,7 @@ def main() -> None:  # noqa: C901, PLR0915
             tokenizer=tokenizer,
             llm=llm,
             device=device,
-            max_length=max_length,
+            max_length=args.max_length,
             stride=args.stride,
             batch_size=args.batch_size,
             tok_batch_size=args.tok_batch_size,
