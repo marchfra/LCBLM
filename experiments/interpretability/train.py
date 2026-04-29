@@ -202,7 +202,7 @@ def _param_matched_latent_dim(ref_vaee: VAEE, input_dim: int) -> int:
 # ── Training loops ────────────────────────────────────────────────────────────
 
 
-def train_vaee(
+def train_vaee(  # noqa: PLR0915
     train_ds: NextTokenDataset,
     val_ds: NextTokenDataset,
     cfg: VAEEConfig,
@@ -218,7 +218,14 @@ def train_vaee(
 
     for epoch in trange(cfg.epochs, desc="VAEE", unit="epoch"):
         model.train()
-        t_recon = t_l0 = t_count = 0.0
+        epoch_terms: dict[str, float] = {
+            "recon": 0.0,
+            "cond_kl": 0.0,
+            "sparsity": 0.0,
+            "entropy": 0.0,
+            "ortho": 0.0,
+        }
+        t_l0 = t_count = 0.0
         for batch in typed_dataloader(train_loader):
             tokens = _flat_tokens(
                 batch.embeddings.to(cfg.device),
@@ -248,16 +255,28 @@ def train_vaee(
             optimizer.zero_grad()
             loss_out.total_loss.backward()
             optimizer.step()
-            t_recon += loss_out.recon_loss.item()
-            t_l0 += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
-            t_count += out.c.shape[0]
+            epoch_terms["recon"] += loss_out.recon_loss.item()
+            epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
+            epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
+            epoch_terms["entropy"] += loss_out.entropy_loss.item()
+            epoch_terms["ortho"] += loss_out.ortho_loss.item()
+            with torch.no_grad():
+                t_l0 += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                t_count += out.c.shape[0]
 
         n_tr = len(train_loader)
-        result.train_recon.append(t_recon / n_tr)
+        result.train_recon.append(epoch_terms["recon"] / n_tr)
         result.train_l0.append(t_l0 / t_count)
 
         model.eval()
-        v_recon = v_l0 = v_count = 0.0
+        val_terms: dict[str, float] = {
+            "recon": 0.0,
+            "cond_kl": 0.0,
+            "sparsity": 0.0,
+            "entropy": 0.0,
+            "ortho": 0.0,
+        }
+        v_l0 = v_count = 0.0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 tokens = _flat_tokens(
@@ -276,25 +295,34 @@ def train_vaee(
                     beta=cfg.beta,
                     lambda_ent=cfg.lambda_ent,
                     lambda_ortho=cfg.lambda_ortho,
+                    decoder_weight=(
+                        model.decoder_first_weight()
+                        if cfg.topology == "stacked" and cfg.lambda_ortho > 0
+                        else None
+                    ),
                     num_embeddings=model.num_embeddings,
                     embedding_size=model.embedding_size,
                 )
-                v_recon += loss_out.recon_loss.item()
+                val_terms["recon"] += loss_out.recon_loss.item()
+                val_terms["cond_kl"] += loss_out.cond_kl_loss.item()
+                val_terms["sparsity"] += loss_out.sparsity_loss.item()
+                val_terms["entropy"] += loss_out.entropy_loss.item()
+                val_terms["ortho"] += loss_out.ortho_loss.item()
                 v_l0 += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
                 v_count += out.c.shape[0]
 
         n_va = len(val_loader)
-        val_recon = v_recon / n_va
+        val_recon = val_terms["recon"] / n_va
         result.val_recon.append(val_recon)
         result.val_l0.append(v_l0 / v_count)
 
         if wandb_run is not None:
             wandb_run.log(
-                {
-                    "train/recon": result.train_recon[-1],
-                    "train/l0": result.train_l0[-1],
-                    "val/recon": val_recon,
-                    "val/l0": result.val_l0[-1],
+                {f"train/vaee_{k}": v / n_tr for k, v in epoch_terms.items()}
+                | {f"val/vaee_{k}": v / n_va for k, v in val_terms.items()}
+                | {
+                    "train/vaee_l0": result.train_l0[-1],
+                    "val/vaee_l0": result.val_l0[-1],
                 },
                 step=epoch + 1,
             )
@@ -305,6 +333,13 @@ def train_vaee(
             best_state = {
                 k: v.detach().clone().cpu() for k, v in model.state_dict().items()
             }
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
         elif _early_stop(
             result,
             cfg.early_stopping_patience,
@@ -318,7 +353,7 @@ def train_vaee(
     return model, result
 
 
-def _train_sae(  # noqa: PLR0913
+def _train_sae(  # noqa: PLR0913, PLR0915
     model_name: str,
     latent_dim: int,
     activation: nn.Module,
@@ -346,7 +381,8 @@ def _train_sae(  # noqa: PLR0913
 
     for epoch in trange(epochs, desc=model_name, unit="epoch"):
         model.train()
-        t_recon = t_l0 = t_count = 0.0
+        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        t_l0 = t_count = 0.0
         for batch in typed_dataloader(train_loader):
             tokens = _flat_tokens(
                 batch.embeddings.to(device),
@@ -354,11 +390,8 @@ def _train_sae(  # noqa: PLR0913
             )
             out = model(tokens)
             recon_loss = F.mse_loss(out.recon, tokens)
-            loss = (
-                recon_loss + lambda_l1 * out.latents.abs().mean()
-                if use_l1
-                else recon_loss
-            )
+            l1_loss = out.latents.abs().mean()
+            loss = recon_loss + lambda_l1 * l1_loss if use_l1 else recon_loss
             optimizer.zero_grad()
             loss.backward()
             if normalize_decoder:
@@ -366,16 +399,19 @@ def _train_sae(  # noqa: PLR0913
             optimizer.step()
             if normalize_decoder:
                 model.normalize_decoder()
-            t_recon += recon_loss.item()
-            t_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
-            t_count += out.latents.shape[0]
+            epoch_terms["recon"] += recon_loss.item()
+            epoch_terms["l1"] += l1_loss.item()
+            with torch.no_grad():
+                t_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
+                t_count += out.latents.shape[0]
 
         n_tr = len(train_loader)
-        result.train_recon.append(t_recon / n_tr)
+        result.train_recon.append(epoch_terms["recon"] / n_tr)
         result.train_l0.append(t_l0 / t_count)
 
         model.eval()
-        v_recon = v_l0 = v_count = 0.0
+        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        v_l0 = v_count = 0.0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
                 tokens = _flat_tokens(
@@ -383,22 +419,23 @@ def _train_sae(  # noqa: PLR0913
                     batch.attention_mask.to(device),
                 )
                 out = model(tokens)
-                v_recon += F.mse_loss(out.recon, tokens).item()
+                val_terms["recon"] += F.mse_loss(out.recon, tokens).item()
+                val_terms["l1"] += out.latents.abs().mean().item()
                 v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 v_count += out.latents.shape[0]
 
         n_va = len(val_loader)
-        val_recon = v_recon / n_va
+        val_recon = val_terms["recon"] / n_va
         result.val_recon.append(val_recon)
         result.val_l0.append(v_l0 / v_count)
 
         if wandb_run is not None:
             wandb_run.log(
-                {
-                    "train/recon": result.train_recon[-1],
-                    "train/l0": result.train_l0[-1],
-                    "val/recon": val_recon,
-                    "val/l0": result.val_l0[-1],
+                {f"train/sae_{k}": v / n_tr for k, v in epoch_terms.items()}
+                | {f"val/sae_{k}": v / n_va for k, v in val_terms.items()}
+                | {
+                    "train/sae_l0": result.train_l0[-1],
+                    "val/sae_l0": result.val_l0[-1],
                 },
                 step=epoch + 1,
             )
@@ -409,6 +446,13 @@ def _train_sae(  # noqa: PLR0913
             best_state = {
                 k: v.detach().clone().cpu() for k, v in model.state_dict().items()
             }
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
         elif _early_stop(result, early_stopping_patience, early_stopping_min_delta):
             print(f"   Early stopping at epoch {epoch + 1}")
             break
