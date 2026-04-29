@@ -382,7 +382,7 @@ def main() -> None:  # noqa: C901
 
     llm: PreTrainedModel = AutoModel.from_pretrained(
         args.model,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         device_map="auto",
     )
     llm.eval()
