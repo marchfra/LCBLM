@@ -1,0 +1,27 @@
+# TopK SAE — SST-2 / Mistral-7B
+# Copy to topk_sae_sst2.toml and set embeddings_path before running.
+#
+# Usage:
+#   interp-train run --model topk_sae experiments/interpretability/configs/topk_sae_sst2.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1
+
+# ── Training ──────────────────────────────────────────────────────────────────
+epochs = 200
+lr = 1e-4
+batch_size = 512
+seed = 42
+
+early_stopping_patience = 30
+early_stopping_min_delta = 0.0
+
+# ── TopK SAE architecture ─────────────────────────────────────────────────────
+k = 64                   # active features per token
+latent_dim = 0           # 0 → 4 × input_dim (standard expansion ratio)
+normalize_decoder = true
+
+# ── Weights & Biases ──────────────────────────────────────────────────────────
+# wandb_project = "lcblm-interpretability"

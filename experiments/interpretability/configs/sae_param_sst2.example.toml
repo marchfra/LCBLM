@@ -1,0 +1,35 @@
+# SAE-param — SST-2 / Mistral-7B
+# L1 SAE whose parameter count is matched to the VAEE.
+# The VAEE architecture fields are used only to instantiate a reference model
+# for parameter counting — the VAEE is not trained.
+# Copy to sae_param_sst2.toml and set embeddings_path before running.
+#
+# Usage:
+#   interp-train run --model sae_param experiments/interpretability/configs/sae_param_sst2.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1
+
+# ── Training ──────────────────────────────────────────────────────────────────
+epochs = 200
+lr = 1e-4
+batch_size = 512
+seed = 42
+
+early_stopping_patience = 30
+early_stopping_min_delta = 0.0
+
+# ── VAEE reference architecture (keep in sync with vaee_sst2.toml) ────────────
+vaee_num_embeddings = 256
+vaee_embedding_size = 128
+vaee_encoder_type = "shallow" # "mlp" | "linear" | "shallow"
+vaee_topology = "stacked"     # "stacked" | "summed"
+
+# ── SAE training ──────────────────────────────────────────────────────────────
+lambda_l1 = 1e-3
+normalize_decoder = true
+
+# ── Weights & Biases ──────────────────────────────────────────────────────────
+# wandb_project = "lcblm-interpretability"

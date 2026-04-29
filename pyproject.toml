@@ -32,6 +32,9 @@ dependencies = [
 embae-exp = "experiments.embae_comparison.exp_cli:main"
 vaee-exp = "experiments.vaee_vs_sae.exp_cli:main"
 vaee-mnist = "experiments.vaee_mnist.exp_cli:main"
+interp-train = "experiments.interpretability.train:main"
+interp-cd = "experiments.interpretability.build_cd:main"
+interp-intervene = "experiments.interpretability.intervene:main"
 extract-emb = "lcblm.extract_embeddings:main"
 
 [dependency-groups]
