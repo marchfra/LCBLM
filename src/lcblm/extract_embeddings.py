@@ -57,6 +57,36 @@ from lcblm.utils import get_device
 
 # ── Tokenisation ──────────────────────────────────────────────────────────────
 
+_WORD_START_PREFIXES = ("▁", "Ġ")  # SentencePiece / BPE word-boundary markers
+
+
+def _token_ids_to_word_ids(
+    token_ids: list[int],
+    tokenizer: PreTrainedTokenizerBase,
+) -> list[int]:
+    """Compute word IDs from token IDs using the tokenizer's word-boundary marker.
+
+    Uses the ▁ / Ġ prefix on token strings rather than enc.word_ids(), which
+    is unreliable for SentencePiece-based tokenizers (e.g. LlamaTokenizerFast).
+    A new word begins when a token's string starts with one of the boundary
+    markers, or immediately after a special/padding token.
+    """
+    special_ids: set[int] = set(tokenizer.all_special_ids)
+    word_id = -1
+    after_special = True  # first real token always starts word 0
+    result: list[int] = []
+    for tid in token_ids:
+        if tid in special_ids:
+            result.append(-1)
+            after_special = True
+        else:
+            tok = str(tokenizer.convert_ids_to_tokens(tid)) or ""
+            if after_special or any(tok.startswith(p) for p in _WORD_START_PREFIXES):
+                word_id += 1
+            result.append(word_id)
+            after_special = False
+    return result
+
 
 def _infer_max_length(
     all_texts: list[str],
@@ -108,8 +138,9 @@ def _tokenize_truncate(
         all_masks.extend(enc["attention_mask"])
         if all_wids is not None:
             for j in range(len(batch)):
-                raw = enc.word_ids(batch_index=j)
-                all_wids.append([-1 if w is None else w for w in raw])
+                all_wids.append(
+                    _token_ids_to_word_ids(enc["input_ids"][j], tokenizer),
+                )
 
     return all_ids, all_masks, all_wids
 
@@ -135,7 +166,9 @@ def _tokenize_stride(
     for text in tqdm(texts, desc="Tokenising (stride)", leave=False):
         enc = tokenizer(text, truncation=False, add_special_tokens=False)
         tokens: list[int] = enc["input_ids"]
-        raw_wids: list[int | None] | None = enc.word_ids() if include_word_ids else None
+        raw_wids: list[int] | None = (
+            _token_ids_to_word_ids(tokens, tokenizer) if include_word_ids else None
+        )
 
         if not tokens:
             continue
@@ -147,8 +180,7 @@ def _tokenize_stride(
             all_masks.append([1] * len(window) + [0] * pad_len)
             if all_wids is not None and raw_wids is not None:
                 wslice = raw_wids[start : start + max_length]
-                wrow = [-1 if w is None else w for w in wslice] + [-1] * pad_len
-                all_wids.append(wrow)
+                all_wids.append(wslice + [-1] * pad_len)
 
     return all_ids, all_masks, all_wids
 
