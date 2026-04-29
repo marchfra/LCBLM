@@ -9,9 +9,11 @@ Output keys per file:
   embeddings      (N, L, D) float16
   word_ids        (N, L)    int64, -1 for special/padding tokens  [unless --no-word-ids]
 
-Without striding, sequences longer than --max-length are truncated.  With
---stride S, each document is tokenised in full and then sliced into
-max-length-token windows that advance S tokens at a time (S == max-length
+The sequence length is auto-inferred as the longest tokenised sequence across
+all splits (so no padding is wasted and no text is truncated).  Pass
+--max-length to impose an upper cap (sequences longer than the cap are then
+truncated).  With --stride S, each document is tokenised in full and sliced
+into max-length-token windows that advance S tokens at a time (S == max-length
 gives non-overlapping windows).
 
 Examples
@@ -54,6 +56,28 @@ from transformers import (
 from lcblm.utils import get_device
 
 # ── Tokenisation ──────────────────────────────────────────────────────────────
+
+
+def _infer_max_length(
+    all_texts: list[str],
+    tokenizer: PreTrainedTokenizerBase,
+    tok_batch_size: int,
+    cap: int | None,
+) -> int:
+    """Return the longest tokenised sequence across all texts, optionally capped."""
+    max_len = 0
+    for start in tqdm(
+        range(0, len(all_texts), tok_batch_size),
+        desc="Scanning sequence lengths",
+        leave=False,
+    ):
+        batch = all_texts[start : start + tok_batch_size]
+        enc = tokenizer(batch, truncation=False, add_special_tokens=True)
+        for ids in enc["input_ids"]:
+            max_len = max(max_len, len(ids))
+    if cap is not None:
+        max_len = min(max_len, cap)
+    return max_len
 
 
 def _tokenize_truncate(
@@ -251,7 +275,7 @@ def _process_split(  # noqa: PLR0913
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
-def main() -> None:  # noqa: C901
+def main() -> None:  # noqa: C901, PLR0915
     load_dotenv()
 
     parser = argparse.ArgumentParser(
@@ -314,8 +338,12 @@ def main() -> None:  # noqa: C901
     parser.add_argument(
         "--max-length",
         type=int,
-        default=256,
-        help="Token sequence length (default: 256).",
+        default=None,
+        help=(
+            "Token sequence length. "
+            "Defaults to the longest sequence in the dataset (auto-inferred). "
+            "Provides an upper cap when set explicitly."
+        ),
     )
     parser.add_argument(
         "--stride",
@@ -375,6 +403,18 @@ def main() -> None:  # noqa: C901
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # Infer max_length from data (fast pass before loading the heavy model)
+    all_texts: list[str] = []
+    for ds in splits_to_process.values():
+        all_texts.extend(ds[args.text_column])
+    max_length = _infer_max_length(
+        all_texts,
+        tokenizer,
+        args.tok_batch_size,
+        args.max_length,
+    )
+    print(f"Using max_length={max_length}")
+
     # Load LLM
     print(f"Loading model: {args.model}")
     device = get_device()
@@ -398,7 +438,7 @@ def main() -> None:  # noqa: C901
             tokenizer=tokenizer,
             llm=llm,
             device=device,
-            max_length=args.max_length,
+            max_length=max_length,
             stride=args.stride,
             batch_size=args.batch_size,
             tok_batch_size=args.tok_batch_size,
