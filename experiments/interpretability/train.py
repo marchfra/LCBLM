@@ -218,6 +218,8 @@ def train_vaee(  # noqa: PLR0915
     result = RunResult(model_name="vaee", n_concepts=cfg.num_embeddings)
     best_state: dict = {}
 
+    l0_threshold = 1e-6
+
     for epoch in trange(cfg.epochs, desc="VAEE", unit="epoch"):
         model.train()
         epoch_terms: dict[str, float] = {
@@ -265,7 +267,7 @@ def train_vaee(  # noqa: PLR0915
             epoch_terms["entropy"] += loss_out.entropy_loss.item()
             epoch_terms["ortho"] += loss_out.ortho_loss.item()
             with torch.no_grad():
-                t_l0 += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                t_l0 += (out.c > l0_threshold).float().sum(dim=1).sum().item()
                 t_count += out.c.shape[0]
 
         n_tr = len(train_loader)
@@ -314,7 +316,7 @@ def train_vaee(  # noqa: PLR0915
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
                 val_terms["entropy"] += loss_out.entropy_loss.item()
                 val_terms["ortho"] += loss_out.ortho_loss.item()
-                v_l0 += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                v_l0 += (out.c > l0_threshold).float().sum(dim=1).sum().item()
                 v_count += out.c.shape[0]
 
         n_va = len(val_loader)
