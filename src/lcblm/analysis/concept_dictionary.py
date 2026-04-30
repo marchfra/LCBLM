@@ -129,7 +129,8 @@ _LEGEND_SENTENCE = (
     "Each column shows the <strong>sentences</strong> that most strongly activate this "
     "concept, ranked by the <strong>peak activation of any single token</strong> in "
     'the sentence. The <strong class="tgt">blue token</strong> is that peak token; '
-    "other tokens above the threshold are also shaded amber, with intensity "
+    "the amber row background reflects the sentence-level peak; "
+    "other tokens above the threshold are shaded blue, with intensity "
     "proportional to their activation, normalised per concept."
 )
 _JS = """\
@@ -435,7 +436,7 @@ def _build_sentence_grid(  # noqa: PLR0913, PLR0915
                 if local_i == best_real_local:
                     row_parts.append(f'<strong class="tgt">{escaped}</strong>')
                 elif float(a) > threshold:
-                    tok_bg = f"rgba(255,152,0,{float(a) / col_max * 0.8:.3f})"
+                    tok_bg = f"rgba(21,101,192,{float(a) / col_max * 0.35:.3f})"
                     row_parts.append(
                         f'<span style="background:{tok_bg}">{escaped}</span>',
                     )
