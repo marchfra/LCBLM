@@ -123,9 +123,11 @@ class RunResult:
     n_concepts: int
     train_recon: list[float] = field(default_factory=list)
     val_recon: list[float] = field(default_factory=list)
+    val_total: list[float] = field(default_factory=list)
     train_l0: list[float] = field(default_factory=list)
     val_l0: list[float] = field(default_factory=list)
-    best_val_recon: float = float("inf")
+    best_val_total: float = float("inf")
+    best_val_recon: float = float("inf")  # recon MSE at the best-total-loss checkpoint
     best_l0: float = float("inf")
 
 
@@ -136,10 +138,10 @@ def _flat_tokens(embeddings: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return embeddings[mask]
 
 
-def _early_stop(result: RunResult, patience: int, min_delta: float) -> bool:
-    if patience <= 0 or len(result.val_recon) < patience:
+def _early_stop(val_total: list[float], patience: int, min_delta: float) -> bool:
+    if patience <= 0 or len(val_total) < patience:
         return False
-    recent = result.val_recon[-patience:]
+    recent = val_total[-patience:]
     return recent[0] - min(recent) <= min_delta
 
 
@@ -317,7 +319,9 @@ def train_vaee(  # noqa: PLR0915
 
         n_va = len(val_loader)
         val_recon = val_terms["recon"] / n_va
+        val_total = val_terms["total"] / n_va
         result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)
 
         if wandb_run is not None:
@@ -331,7 +335,8 @@ def train_vaee(  # noqa: PLR0915
                 step=epoch + 1,
             )
 
-        if val_recon < result.best_val_recon - cfg.early_stopping_min_delta:
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
             best_state = {
@@ -340,12 +345,13 @@ def train_vaee(  # noqa: PLR0915
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
+                        "best_val_total": result.best_val_total,
                         "best_val_recon": result.best_val_recon,
                         "best_l0": result.best_l0,
                     },
                 )
         elif _early_stop(
-            result,
+            result.val_total,
             cfg.early_stopping_patience,
             cfg.early_stopping_min_delta,
         ):
@@ -430,7 +436,9 @@ def _train_sae(  # noqa: PLR0913, PLR0915
 
         n_va = len(val_loader)
         val_recon = val_terms["recon"] / n_va
+        val_total = val_recon + lambda_l1 * val_terms["l1"] / n_va
         result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)
 
         if wandb_run is not None:
@@ -444,7 +452,8 @@ def _train_sae(  # noqa: PLR0913, PLR0915
                 step=epoch + 1,
             )
 
-        if val_recon < result.best_val_recon - early_stopping_min_delta:
+        if val_total < result.best_val_total - early_stopping_min_delta:
+            result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
             best_state = {
@@ -453,11 +462,16 @@ def _train_sae(  # noqa: PLR0913, PLR0915
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
+                        "best_val_total": result.best_val_total,
                         "best_val_recon": result.best_val_recon,
                         "best_l0": result.best_l0,
                     },
                 )
-        elif _early_stop(result, early_stopping_patience, early_stopping_min_delta):
+        elif _early_stop(
+            result.val_total,
+            early_stopping_patience,
+            early_stopping_min_delta,
+        ):
             print(f"   Early stopping at epoch {epoch + 1}")
             break
 
