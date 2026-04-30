@@ -123,14 +123,14 @@ _LEGEND_TOKEN = (
     "this concept, ranked by their peak activation value. "
     'The <strong class="tgt">blue token</strong> is the target; surrounding gray text '
     "is its context window. Row background shading (amber) reflects the raw activation "
-    "value — deeper amber means stronger activation."
+    "value, normalised per concept — deeper amber means stronger activation."
 )
 _LEGEND_SENTENCE = (
     "Each column shows the <strong>sentences</strong> that most strongly activate this "
     "concept, ranked by the <strong>peak activation of any single token</strong> in "
     'the sentence. The <strong class="tgt">blue token</strong> is that peak token; '
     "other tokens above the threshold are also shaded amber, with intensity "
-    "proportional to their activation."
+    "proportional to their activation, normalised per concept."
 )
 _JS = """\
 function showView(name) {
@@ -290,6 +290,7 @@ def _build_token_grid(  # noqa: PLR0913
         col_alpha = alpha[:, concept_idx]
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
+        col_max = float(col_alpha.max()) or 1.0
         scores = best_val[:, concept_idx]
 
         valid_idxs = np.where(np.isfinite(scores))[0]
@@ -318,7 +319,7 @@ def _build_token_grid(  # noqa: PLR0913
                 context_size,
             )
 
-            bg = f"rgba(255,152,0,{score * 0.4:.3f})"
+            bg = f"rgba(255,152,0,{score / col_max * 0.8:.3f})"
             b = _html.escape(before)
             t = _html.escape(target)
             a = _html.escape(after)
@@ -377,6 +378,7 @@ def _build_sentence_grid(  # noqa: PLR0913, PLR0915
         col_alpha = alpha[:, concept_idx]
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
+        col_max = float(col_alpha.max()) or 1.0
 
         scores = best_sent_score[:, concept_idx]
         valid = np.where(scores > -np.inf)[0]
@@ -424,7 +426,7 @@ def _build_sentence_grid(  # noqa: PLR0913, PLR0915
             pos_order = np.argsort(positions[flat_slice])
             sent_alpha_sorted = alpha[flat_slice[pos_order], concept_idx]
 
-            bg = f"rgba(255,152,0,{score * 0.4:.3f})"
+            bg = f"rgba(255,152,0,{score / col_max * 0.8:.3f})"
             row_parts: list[str] = []
             for local_i, (text, a) in enumerate(
                 zip(token_texts, sent_alpha_sorted, strict=True),
@@ -433,7 +435,7 @@ def _build_sentence_grid(  # noqa: PLR0913, PLR0915
                 if local_i == best_real_local:
                     row_parts.append(f'<strong class="tgt">{escaped}</strong>')
                 elif float(a) > threshold:
-                    tok_bg = f"rgba(255,152,0,{float(a) * 0.4:.3f})"
+                    tok_bg = f"rgba(255,152,0,{float(a) / col_max * 0.8:.3f})"
                     row_parts.append(
                         f'<span style="background:{tok_bg}">{escaped}</span>',
                     )
