@@ -511,15 +511,19 @@ def _build_word_context_string(
     target_ids = [ids[p] for p in word_pos]
     after_ids = [ids[real_positions[i]] for i in range(last_in_real + 1, end)]
 
+    bt_ids = before_ids + target_ids
+    bta_ids = bt_ids + after_ids
+
     before_text = (
         str(tokenizer.decode(before_ids, skip_special_tokens=True))
         if before_ids
         else ""
     )
-    target_text = str(tokenizer.decode(target_ids, skip_special_tokens=True))
-    after_text = (
-        str(tokenizer.decode(after_ids, skip_special_tokens=True)) if after_ids else ""
-    )
+    bt_text = str(tokenizer.decode(bt_ids, skip_special_tokens=True))
+    bta_text = str(tokenizer.decode(bta_ids, skip_special_tokens=True))
+
+    target_text = bt_text[len(before_text) :]
+    after_text = bta_text[len(bt_text) :]
 
     before = ("… " if start > 0 else "") + before_text.lstrip()
     after = after_text
