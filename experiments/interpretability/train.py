@@ -23,6 +23,7 @@ import argparse
 import dataclasses
 import json
 import sys
+import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -79,6 +80,22 @@ class VAEEConfig(_BaseConfig):
     lambda_ent: float = 0.01
     lambda_ortho: float = 1e-3
     l0_threshold: float = 0.5
+
+    def __post_init__(self) -> None:
+        minimum_l0 = 2.0
+        maximum_l0 = 7.0
+        target_l0 = self.num_embeddings * self.pi
+
+        if target_l0 < minimum_l0:
+            warnings.warn(
+                f"Your target L0 is {target_l0}, lower than {minimum_l0}.",
+                stacklevel=2,
+            )
+        if target_l0 > maximum_l0:
+            warnings.warn(
+                f"Your target L0 is {target_l0}, higher than {maximum_l0}.",
+                stacklevel=2,
+            )
 
 
 @dataclass(frozen=True)
