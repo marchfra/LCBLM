@@ -32,7 +32,7 @@ from experiments.interpretability.model_adapter import (
     VAEEAdapter,
     get_token_activations,
 )
-from lcblm.analysis import build_concept_dictionary
+from lcblm.analysis import aggregate_to_words, build_concept_dictionary
 from lcblm.sae_utils import SparseAE, TopK
 from lcblm.vaee.models import VAEE
 
@@ -164,10 +164,9 @@ def main() -> None:
         msg = f"No checkpoint found in {ckpt_dir}"
         raise FileNotFoundError(msg)
     if len(ckpt_candidates) > 1:
-        names = ", ".join(p.name for p in sorted(ckpt_candidates))
-        msg = f"Multiple checkpoints found in {ckpt_dir}: {names}"
-        raise RuntimeError(msg)
-    ckpt_path = ckpt_candidates[0]
+        ckpt_path = max(ckpt_candidates, key=lambda p: p.stat().st_mtime)
+    else:
+        ckpt_path = ckpt_candidates[0]
 
     config_path = run_dir / "config.json"
     if not config_path.exists():
@@ -208,6 +207,23 @@ def main() -> None:
     mean_l0 = (alpha > threshold).sum(axis=1).mean()
     print(f"  {len(token_ids)} tokens  mean L0={mean_l0:.2f}")
 
+    word_alpha = word_token_ids_arr = word_sentence_indices = word_positions = None
+    if dataset.word_ids is not None:
+        flat_word_ids = dataset.word_ids[
+            torch.tensor(sentence_indices, dtype=torch.long),
+            torch.tensor(positions, dtype=torch.long),
+        ].numpy()
+        word_alpha, word_token_ids_arr, word_sentence_indices, word_positions = (
+            aggregate_to_words(
+                alpha,
+                token_ids,
+                sentence_indices,
+                positions,
+                flat_word_ids,
+            )
+        )
+        print(f"  {len(word_token_ids_arr)} words")
+
     print(f"Loading tokenizer {args.tokenizer}...")
     tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.tokenizer)  # ty:ignore[invalid-assignment]
 
@@ -233,6 +249,10 @@ def main() -> None:
         context_size=args.context_size,
         title=title,
         out_path=out_path,
+        word_alpha=word_alpha,
+        word_token_ids=word_token_ids_arr,
+        word_sentence_indices=word_sentence_indices,
+        word_positions=word_positions,
     )
 
 

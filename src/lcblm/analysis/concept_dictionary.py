@@ -125,6 +125,13 @@ _LEGEND_TOKEN = (
     "is its context window. Row background shading (amber) reflects the raw activation "
     "value, normalised per concept — deeper amber means stronger activation."
 )
+_LEGEND_WORD = (
+    "Each column shows the <strong>word types</strong> that most strongly activate "
+    "this concept, ranked by their peak activation value. Sub-word tokens belonging "
+    'to the same word are decoded together. The <strong class="tgt">blue word</strong> '
+    "is the target; surrounding gray text is its context window. Row background "
+    "shading (amber) reflects the activation value, normalised per concept."
+)
 _LEGEND_SENTENCE = (
     "Each column shows the <strong>sentences</strong> that most strongly activate this "
     "concept, ranked by the <strong>peak activation of any single token</strong> in "
@@ -135,8 +142,9 @@ _LEGEND_SENTENCE = (
 )
 _JS = """\
 function showView(name) {
-  ['token', 'sentence'].forEach(function(v) {
-    document.getElementById('view-' + v).style.display = v === name ? '' : 'none';
+  ['token', 'sentence', 'word'].forEach(function(v) {
+    var el = document.getElementById('view-' + v);
+    if (el) el.style.display = v === name ? '' : 'none';
   });
   document.querySelectorAll('.tab-btn').forEach(function(b) {
     b.classList.toggle('active', b.dataset.view === name);
@@ -455,6 +463,150 @@ def _build_sentence_grid(  # noqa: PLR0913, PLR0915
     return "\n".join(parts)
 
 
+# ── Word view helpers ─────────────────────────────────────────────────────────
+
+
+def _build_word_context_string(
+    dataset: NextTokenDataset,
+    tokenizer: PreTrainedTokenizerBase,
+    sentence_idx: int,
+    position: int,
+    context_size: int = 4,
+) -> tuple[str, str, str]:
+    """Return (before, word, after) decoding all sub-word tokens of the target word."""
+    sentence = dataset[sentence_idx]
+    ids = sentence.input_ids.tolist()
+    mask = sentence.attention_mask.tolist()
+    real_positions = [i for i, m in enumerate(mask) if m]
+
+    if sentence.word_ids is None:
+        return build_context_string(
+            dataset,
+            tokenizer,
+            sentence_idx,
+            position,
+            context_size,
+        )
+
+    word_ids_list = sentence.word_ids.tolist()
+    target_word_id = word_ids_list[position]
+
+    word_pos = [p for p in real_positions if word_ids_list[p] == target_word_id]
+    if not word_pos:
+        return build_context_string(
+            dataset,
+            tokenizer,
+            sentence_idx,
+            position,
+            context_size,
+        )
+
+    first_in_real = real_positions.index(word_pos[0])
+    last_in_real = real_positions.index(word_pos[-1])
+
+    start = max(0, first_in_real - context_size)
+    end = min(len(real_positions), last_in_real + context_size + 1)
+
+    before_ids = [ids[real_positions[i]] for i in range(start, first_in_real)]
+    target_ids = [ids[p] for p in word_pos]
+    after_ids = [ids[real_positions[i]] for i in range(last_in_real + 1, end)]
+
+    before_text = (
+        str(tokenizer.decode(before_ids, skip_special_tokens=True))
+        if before_ids
+        else ""
+    )
+    target_text = str(tokenizer.decode(target_ids, skip_special_tokens=True))
+    after_text = (
+        str(tokenizer.decode(after_ids, skip_special_tokens=True)) if after_ids else ""
+    )
+
+    before = ("… " if start > 0 else "") + before_text.lstrip()
+    after = after_text
+    if end < len(real_positions):
+        after = after.rstrip() + " …"
+
+    return before, target_text, after
+
+
+def _build_word_grid(  # noqa: PLR0913
+    word_alpha: np.ndarray,
+    word_token_ids: np.ndarray,
+    word_sentence_indices: np.ndarray,
+    word_positions: np.ndarray,
+    dataset: NextTokenDataset,
+    tokenizer: PreTrainedTokenizerBase,
+    num_concepts: int,
+    threshold: float,
+    top_k: int,
+    max_concepts: int | None,
+    context_size: int,
+) -> str:
+    concept_total = word_alpha.sum(axis=0)
+    top_concept_idxs = np.argsort(concept_total)[::-1][:max_concepts]
+
+    unique_ids, inverse = np.unique(word_token_ids, return_inverse=True)
+    n_types = len(unique_ids)
+    best_occ = np.full((n_types, num_concepts), -1, dtype=np.int64)
+    best_val = np.full((n_types, num_concepts), -np.inf, dtype=np.float32)
+    for flat_idx in range(len(word_token_ids)):
+        type_idx = inverse[flat_idx]
+        vals = word_alpha[flat_idx]
+        improved = vals > best_val[type_idx]
+        best_val[type_idx, improved] = vals[improved]
+        best_occ[type_idx, improved] = flat_idx
+
+    parts: list[str] = ['<div class="grid">']
+
+    for concept_idx in top_concept_idxs:
+        col_alpha = word_alpha[:, concept_idx]
+        mean_alpha = float(col_alpha.mean())
+        l0_freq = float((col_alpha > threshold).mean())
+        col_max = float(col_alpha.max()) or 1.0
+        scores = best_val[:, concept_idx]
+
+        valid_idxs = np.where(np.isfinite(scores))[0]
+        if len(valid_idxs) == 0:
+            top_type_idxs: np.ndarray = np.array([], dtype=np.int64)
+        else:
+            top_type_idxs = valid_idxs[np.argsort(scores[valid_idxs])[::-1][:top_k]]
+
+        parts.append('<div class="col">')
+        parts.append(
+            f'<div class="col-header">C{concept_idx}'
+            f"<br>L0: {l0_freq:.1%} | ā: {mean_alpha:.2f}</div>",
+        )
+
+        for type_idx in top_type_idxs:
+            score = float(scores[type_idx])
+            flat_idx = int(best_occ[type_idx, concept_idx])
+            sent_idx = int(word_sentence_indices[flat_idx])
+            pos = int(word_positions[flat_idx])
+
+            before, target, after = _build_word_context_string(
+                dataset,
+                tokenizer,
+                sent_idx,
+                pos,
+                context_size,
+            )
+
+            bg = f"rgba(255,152,0,{score / col_max * 0.8:.3f})"
+            b = _html.escape(before)
+            t = _html.escape(target)
+            a = _html.escape(after)
+            parts.append(
+                f'<div class="row" style="background:{bg}">'
+                f'{b}<strong class="tgt">{t}</strong>{a}'
+                "</div>",
+            )
+
+        parts.append("</div>")
+
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -472,12 +624,19 @@ def build_concept_dictionary(  # noqa: PLR0913
     context_size: int = 4,
     title: str = "Concept Dictionary",
     out_path: Path | None = None,
+    word_alpha: np.ndarray | None = None,
+    word_token_ids: np.ndarray | None = None,
+    word_sentence_indices: np.ndarray | None = None,
+    word_positions: np.ndarray | None = None,
 ) -> None:
-    """Write a self-contained HTML concept dictionary with token and sentence views.
+    """Write a self-contained HTML concept dictionary.
+
+    Produces a token view, a sentence view, and — when word arrays are supplied —
+    a word view. All views are tab-switchable inside a single HTML file.
 
     Args:
         alpha: Activation values, shape (N_tokens, num_concepts). For VAEE this is gate
-            probability ∈ [0,1]; for SAE this is the post-activation latent value.
+            probability in [0, 1]; for SAE this is the post-activation latent value.
         token_ids: Flat token IDs, shape (N_tokens,).
         sentence_indices: Sentence index for each token, shape (N_tokens,).
         positions: Position within the padded sequence for each token, shape
@@ -489,13 +648,24 @@ def build_concept_dictionary(  # noqa: PLR0913
             frequency computation. Use 0.5 for VAEE gate probabilities, 0.0 for SAE.
         top_k: Number of entries to display per concept per view.
         max_concepts: Maximum number of concepts to show. None shows all.
-        context_size: Tokens to show on each side of the target in the token view.
+        context_size: Tokens to show on each side of the target token or word.
         title: Page heading.
         out_path: Path to write the HTML file. Defaults to concept_dict.html.
+        word_alpha: Word-level activations from aggregate_to_words, shape
+            (N_words, num_concepts). Required for the word view tab.
+        word_token_ids: First sub-word token ID for each word, shape (N_words,).
+        word_sentence_indices: Sentence index for each word, shape (N_words,).
+        word_positions: Position of the first sub-word token of each word,
+            shape (N_words,).
 
     """
     if out_path is None:
         out_path = Path("concept_dict.html")
+
+    has_word_view = all(
+        x is not None
+        for x in (word_alpha, word_token_ids, word_sentence_indices, word_positions)
+    )
 
     token_grid = _build_token_grid(
         alpha,
@@ -521,6 +691,20 @@ def build_concept_dictionary(  # noqa: PLR0913
         top_k,
         max_concepts,
     )
+    if has_word_view:
+        word_grid = _build_word_grid(
+            word_alpha,  # ty:ignore[invalid-argument-type]
+            word_token_ids,  # ty:ignore[invalid-argument-type]
+            word_sentence_indices,  # ty:ignore[invalid-argument-type]
+            word_positions,  # ty:ignore[invalid-argument-type]
+            dataset,
+            tokenizer,
+            num_concepts,
+            threshold,
+            top_k,
+            max_concepts,
+            context_size,
+        )
 
     parts: list[str] = [
         "<!DOCTYPE html>",
@@ -534,6 +718,12 @@ def build_concept_dictionary(  # noqa: PLR0913
         '<div class="toolbar">',
         '<button class="tab-btn active" data-view="token" onclick="showView(\'token\')">Token view</button>',  # noqa: E501
         '<button class="tab-btn" data-view="sentence" onclick="showView(\'sentence\')">Sentence view</button>',  # noqa: E501
+    ]
+    if has_word_view:
+        parts.append(
+            '<button class="tab-btn" data-view="word" onclick="showView(\'word\')">Word view</button>',  # noqa: E501
+        )
+    parts += [
         "</div>",
         '<div id="view-token">',
         f'<p class="legend">{_LEGEND_TOKEN}</p>',
@@ -543,6 +733,15 @@ def build_concept_dictionary(  # noqa: PLR0913
         f'<p class="legend">{_LEGEND_SENTENCE}</p>',
         sentence_grid,
         "</div>",
+    ]
+    if has_word_view:
+        parts += [
+            '<div id="view-word" style="display:none">',
+            f'<p class="legend">{_LEGEND_WORD}</p>',
+            word_grid,  # type: ignore[name-defined]
+            "</div>",
+        ]
+    parts += [
         f"<script>{_JS}</script>",
         "</body></html>",
     ]
