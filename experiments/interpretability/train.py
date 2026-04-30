@@ -219,6 +219,7 @@ def train_vaee(  # noqa: PLR0915
     for epoch in trange(cfg.epochs, desc="VAEE", unit="epoch"):
         model.train()
         epoch_terms: dict[str, float] = {
+            "total": 0.0,
             "recon": 0.0,
             "cond_kl": 0.0,
             "sparsity": 0.0,
@@ -255,6 +256,7 @@ def train_vaee(  # noqa: PLR0915
             optimizer.zero_grad()
             loss_out.total_loss.backward()
             optimizer.step()
+            epoch_terms["total"] += loss_out.total_loss.item()
             epoch_terms["recon"] += loss_out.recon_loss.item()
             epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
             epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
@@ -270,6 +272,7 @@ def train_vaee(  # noqa: PLR0915
 
         model.eval()
         val_terms: dict[str, float] = {
+            "total": 0.0,
             "recon": 0.0,
             "cond_kl": 0.0,
             "sparsity": 0.0,
@@ -303,6 +306,7 @@ def train_vaee(  # noqa: PLR0915
                     num_embeddings=model.num_embeddings,
                     embedding_size=model.embedding_size,
                 )
+                val_terms["total"] += loss_out.total_loss.item()
                 val_terms["recon"] += loss_out.recon_loss.item()
                 val_terms["cond_kl"] += loss_out.cond_kl_loss.item()
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
