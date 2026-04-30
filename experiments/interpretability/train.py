@@ -580,6 +580,27 @@ def _save_checkpoint(
     )
 
 
+# ── W&B run naming ────────────────────────────────────────────────────────────
+
+
+def _run_name(
+    cfg: VAEEConfig | TopKSAEConfig | SAEConceptConfig | SAEParamConfig,
+    latent_dim: int = 0,
+) -> str:
+    if isinstance(cfg, VAEEConfig):
+        return f"VAEE-{cfg.num_embeddings}x{cfg.embedding_size}"
+    if isinstance(cfg, TopKSAEConfig):
+        return f"TopK-SAE-{latent_dim}"
+    if isinstance(cfg, SAEConceptConfig):
+        return f"SAE-{latent_dim}"
+    if isinstance(cfg, SAEParamConfig):
+        return (
+            f"SAE-{latent_dim}@VAEE-{cfg.vaee_num_embeddings}x{cfg.vaee_embedding_size}"
+        )
+    msg = f"Unknown config type: {type(cfg)}"
+    raise TypeError(msg)
+
+
 # ── Config loading ────────────────────────────────────────────────────────────
 
 _MODEL_CONFIG_CLASSES = {
@@ -624,7 +645,7 @@ def _load_config(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
-def cmd_run(args: argparse.Namespace) -> None:  # noqa: PLR0915
+def cmd_run(args: argparse.Namespace) -> None:  # noqa: C901, PLR0915
     config_path = Path(args.config)
     if not config_path.exists():
         print(f"Error: config not found: {config_path}", file=sys.stderr)
@@ -669,12 +690,24 @@ def cmd_run(args: argparse.Namespace) -> None:  # noqa: PLR0915
             indent=2,
         )
 
+    # Resolve latent_dim before W&B init so the run name can include it.
+    if isinstance(cfg, TopKSAEConfig):
+        latent_dim = cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
+    elif isinstance(cfg, SAEConceptConfig):
+        latent_dim = cfg.vaee_num_embeddings
+    elif isinstance(cfg, SAEParamConfig):
+        ref_vaee = _build_ref_vaee(input_dim, cfg)
+        latent_dim = _param_matched_latent_dim(ref_vaee, input_dim)
+        del ref_vaee
+    else:
+        latent_dim = 0  # unused for VAEE
+
     wandb_run = None
     if cfg.wandb_project:
         cfg_log = {**cfg_dict, **dataclasses.asdict(ds_cfg), "model_type": model_type}
         wandb_run = wandb.init(
             project=cfg.wandb_project,
-            name=f"{ds_cfg.name}_{model_type}",
+            name=_run_name(cfg, latent_dim),
             config=cfg_log,
         )
 
@@ -697,7 +730,6 @@ def cmd_run(args: argparse.Namespace) -> None:  # noqa: PLR0915
 
     elif model_type == "topk_sae":
         assert isinstance(cfg, TopKSAEConfig)  # noqa: S101
-        latent_dim = cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
         model, result = train_topk_sae(train_ds, val_ds, cfg, wandb_run)
         metadata = {
             "model_type": "topk_sae",
@@ -714,16 +746,13 @@ def cmd_run(args: argparse.Namespace) -> None:  # noqa: PLR0915
         metadata = {
             "model_type": "sae_concept",
             "input_dim": input_dim,
-            "latent_dim": cfg.vaee_num_embeddings,
+            "latent_dim": latent_dim,
             "best_val_recon": result.best_val_recon,
             "best_l0": result.best_l0,
         }
 
     elif model_type == "sae_param":
         assert isinstance(cfg, SAEParamConfig)  # noqa: S101
-        ref_vaee = _build_ref_vaee(input_dim, cfg)
-        latent_dim = _param_matched_latent_dim(ref_vaee, input_dim)
-        del ref_vaee
         model, result = train_sae_param(train_ds, val_ds, cfg, wandb_run)
         metadata = {
             "model_type": "sae_param",
