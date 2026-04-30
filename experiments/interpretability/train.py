@@ -670,9 +670,22 @@ def cmd_run(args: argparse.Namespace) -> None:  # noqa: C901, PLR0915
         f"Embedding dim: {input_dim}\n",
     )
 
+    # Resolve latent_dim early — needed for run_name before out_dir is created.
+    if isinstance(cfg, TopKSAEConfig):
+        latent_dim = cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
+    elif isinstance(cfg, SAEConceptConfig):
+        latent_dim = cfg.vaee_num_embeddings
+    elif isinstance(cfg, SAEParamConfig):
+        ref_vaee = _build_ref_vaee(input_dim, cfg)
+        latent_dim = _param_matched_latent_dim(ref_vaee, input_dim)
+        del ref_vaee
+    else:
+        latent_dim = 0  # unused for VAEE
+
+    run_name = _run_name(cfg, latent_dim)
     base = Path(args.out_dir) if args.out_dir else Path(__file__).parent / "outputs"
     timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
-    out_dir = base / f"{ds_cfg.name}_{model_type}_{timestamp}"
+    out_dir = base / f"{run_name}_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     save_scaler(scaler, out_dir / "scaler.pkl")
@@ -689,24 +702,12 @@ def cmd_run(args: argparse.Namespace) -> None:  # noqa: C901, PLR0915
             indent=2,
         )
 
-    # Resolve latent_dim before W&B init so the run name can include it.
-    if isinstance(cfg, TopKSAEConfig):
-        latent_dim = cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
-    elif isinstance(cfg, SAEConceptConfig):
-        latent_dim = cfg.vaee_num_embeddings
-    elif isinstance(cfg, SAEParamConfig):
-        ref_vaee = _build_ref_vaee(input_dim, cfg)
-        latent_dim = _param_matched_latent_dim(ref_vaee, input_dim)
-        del ref_vaee
-    else:
-        latent_dim = 0  # unused for VAEE
-
     wandb_run = None
     if cfg.wandb_project:
         cfg_log = {**cfg_dict, **dataclasses.asdict(ds_cfg), "model_type": model_type}
         wandb_run = wandb.init(
             project=cfg.wandb_project,
-            name=_run_name(cfg, latent_dim),
+            name=run_name,
             config=cfg_log,
         )
 
@@ -767,7 +768,7 @@ def cmd_run(args: argparse.Namespace) -> None:  # noqa: C901, PLR0915
     if wandb_run is not None:
         wandb_run.finish()
 
-    _save_checkpoint(model, model_type, metadata, ckpt_dir)
+    _save_checkpoint(model, run_name, metadata, ckpt_dir)
 
     with (out_dir / "results.json").open("w") as f:
         json.dump(dataclasses.asdict(result), f, indent=2)
