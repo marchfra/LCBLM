@@ -10,16 +10,15 @@ and model name.
 
 Usage
 -----
-    interp-cd --run-dir outputs/sst2_20260429_120000 --model vaee
-    interp-cd --run-dir outputs/sst2_20260429_120000 --model topk_sae --split train
-    interp-cd --run-dir outputs/sst2_20260429_120000 --model sae_concept --top-k 20
+    interp-cd --run-dir outputs/VAEE-256x128_20260430_120000
+    interp-cd --run-dir outputs/TopK-SAE-16384_20260430_120000 --split train
+    interp-cd --run-dir outputs/SAE-256_20260430_120000 --top-k 20
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import torch
@@ -28,6 +27,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from experiments.interpretability.data import load_scaler, load_split
 from experiments.interpretability.model_adapter import (
+    ModelAdapter,
     SparseAEAdapter,
     VAEEAdapter,
     get_token_activations,
@@ -73,7 +73,7 @@ def _load_sparse_ae(state_dict: dict, meta: dict) -> SparseAE:
     return model
 
 
-def load_adapter(ckpt_path: Path) -> VAEEAdapter | SparseAEAdapter:
+def load_adapter(ckpt_path: Path) -> ModelAdapter:
     meta_path = ckpt_path.with_name(ckpt_path.stem + "_meta.json")
     if not meta_path.exists():
         msg = f"Metadata file not found: {meta_path}"
@@ -107,13 +107,6 @@ def main() -> None:
         "-r",
         required=True,
         help="Run output directory produced by interp-train.",
-    )
-    parser.add_argument(
-        "--model",
-        "-m",
-        required=True,
-        choices=["vaee", "topk_sae", "sae_concept", "sae_param"],
-        help="Which checkpoint to load.",
     )
     parser.add_argument(
         "--split",
@@ -165,15 +158,21 @@ def main() -> None:
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
-    ckpt_path = run_dir / "checkpoints" / f"{args.model}.pt"
-    if not ckpt_path.exists():
-        print(f"Error: checkpoint not found: {ckpt_path}", file=sys.stderr)
-        sys.exit(1)
+    ckpt_dir = run_dir / "checkpoints"
+    ckpt_candidates = [p for p in ckpt_dir.glob("*.pt") if not p.stem.endswith("_meta")]
+    if len(ckpt_candidates) == 0:
+        msg = f"No checkpoint found in {ckpt_dir}"
+        raise FileNotFoundError(msg)
+    if len(ckpt_candidates) > 1:
+        names = ", ".join(p.name for p in sorted(ckpt_candidates))
+        msg = f"Multiple checkpoints found in {ckpt_dir}: {names}"
+        raise RuntimeError(msg)
+    ckpt_path = ckpt_candidates[0]
 
     config_path = run_dir / "config.json"
     if not config_path.exists():
-        print(f"Error: config.json not found in {run_dir}", file=sys.stderr)
-        sys.exit(1)
+        msg = f"config.json not found in {run_dir}"
+        raise FileNotFoundError(msg)
 
     with config_path.open() as f:
         config = json.load(f)
@@ -182,10 +181,10 @@ def main() -> None:
     print(f"Loading checkpoint: {ckpt_path.name}")
     adapter = load_adapter(ckpt_path)
     threshold = (
-        args.threshold if args.threshold is not None else adapter.default_threshold
+        int(args.threshold) if args.threshold is not None else adapter.default_threshold
     )
     print(
-        f"  model type : {args.model}"
+        f"  model: {ckpt_path.stem}"
         f"  n_concepts={adapter.n_concepts}"
         f"  threshold={threshold}",
     )
@@ -213,9 +212,11 @@ def main() -> None:
     tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.tokenizer)  # ty:ignore[invalid-assignment]
 
     out_path = (
-        Path(args.out) if args.out else run_dir / f"{args.model}_{args.split}_cd.html"
+        Path(args.out)
+        if args.out
+        else run_dir / f"{ckpt_path.stem}_{args.split}_cd.html"
     )
-    title = f"{args.model.upper()} Concept Dictionary — {ds_cfg['name']} {args.split}"
+    title = f"{ckpt_path.stem} Concept Dictionary — {ds_cfg['name']} {args.split}"
 
     print("Building concept dictionary...")
     build_concept_dictionary(
