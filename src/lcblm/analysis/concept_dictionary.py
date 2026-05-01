@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm.auto import tqdm
 
 if TYPE_CHECKING:
     from transformers import PreTrainedTokenizerBase
@@ -295,7 +296,7 @@ def _build_token_grid(  # noqa: PLR0913
 
     parts: list[str] = ['<div class="grid">']
 
-    for concept_idx in top_concept_idxs:
+    for concept_idx in tqdm(top_concept_idxs, desc="token view", unit="concept"):
         col_alpha = alpha[:, concept_idx]
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
@@ -383,7 +384,7 @@ def _build_sentence_grid(  # noqa: PLR0913, PLR0915
     decoded_cache: dict[int, list[str]] = {}
     parts: list[str] = ['<div class="grid">']
 
-    for concept_idx in top_concept_idxs:
+    for concept_idx in tqdm(top_concept_idxs, desc="sentence view", unit="concept"):
         col_alpha = alpha[:, concept_idx]
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
@@ -562,7 +563,7 @@ def _build_word_grid(  # noqa: PLR0913
 
     parts: list[str] = ['<div class="grid">']
 
-    for concept_idx in top_concept_idxs:
+    for concept_idx in tqdm(top_concept_idxs, desc="word view", unit="concept"):
         col_alpha = word_alpha[:, concept_idx]
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
