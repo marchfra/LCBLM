@@ -38,7 +38,9 @@ from tqdm.auto import trange
 import wandb
 from experiments.interpretability.data import load_embeddings, save_scaler
 from lcblm.sae_utils import SparseAE, TopK
+from lcblm.sae_utils.activations import update_dead_latent_counts
 from lcblm.sae_utils.dataset import compute_tied_bias
+from lcblm.sae_utils.losses import loss_k_aux, loss_top_k
 from lcblm.utils import get_device, set_seeds
 from lcblm.utils.data import NextTokenDataset, typed_dataloader
 from lcblm.vaee.models import VAEE, compute_loss
@@ -103,6 +105,9 @@ class TopKSAEConfig(_BaseConfig):
     k: int = 64
     latent_dim: int = 0  # 0 → 4 * input_dim
     normalize_decoder: bool = True
+    k_aux: int = 512
+    alpha_aux: float = 1 / 32
+    threshold_dead_latent: int = 500
 
 
 @dataclass(frozen=True)
@@ -381,26 +386,147 @@ def train_vaee(  # noqa: PLR0915
     return model, result
 
 
-def _train_sae(  # noqa: PLR0913, PLR0915
+def _train_topk_sae(  # noqa: PLR0915
+    latent_dim: int,
+    train_ds: NextTokenDataset,
+    val_ds: NextTokenDataset,
+    cfg: TopKSAEConfig,
+    wandb_run: wandb.sdk.wandb_run.Run | None = None,
+) -> tuple[SparseAE, RunResult]:
+    input_dim = train_ds.embedding_dimension
+    model = _build_sae(input_dim, latent_dim, TopK(cfg.k), train_ds, cfg.device)
+    optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
+    result = RunResult(model_name="topk_sae", n_concepts=latent_dim)
+    best_state: dict = {}
+
+    dead_counts = torch.zeros(latent_dim, dtype=torch.long, device=cfg.device)
+
+    for epoch in trange(cfg.epochs, desc="TopK-SAE", unit="epoch"):
+        model.train()
+        epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "aux": 0.0}
+        t_l0 = t_count = 0.0
+
+        for batch in typed_dataloader(train_loader):
+            tokens = _flat_tokens(
+                batch.embeddings.to(cfg.device),
+                batch.attention_mask.to(cfg.device),
+            )
+            out = model(tokens)
+            dead_counts = update_dead_latent_counts(out.latents.detach(), dead_counts)
+            dead_mask = dead_counts > cfg.threshold_dead_latent
+            recon_loss = F.mse_loss(out.recon, tokens)
+            aux_loss = loss_k_aux(model, tokens, out, dead_mask, k_aux=cfg.k_aux)
+            loss = loss_top_k(recon_loss, aux_loss, alpha_aux=cfg.alpha_aux)
+            optimizer.zero_grad()
+            loss.backward()
+            if cfg.normalize_decoder:
+                model.project_decoder_gradients()
+            optimizer.step()
+            if cfg.normalize_decoder:
+                model.normalize_decoder()
+            epoch_terms["total"] += loss.item()
+            epoch_terms["recon"] += recon_loss.item()
+            epoch_terms["aux"] += aux_loss.item()
+            with torch.no_grad():
+                t_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
+                t_count += out.latents.shape[0]
+
+        n_tr = len(train_loader)
+        result.train_recon.append(epoch_terms["recon"] / n_tr)
+        result.train_l0.append(t_l0 / t_count)
+
+        model.eval()
+        val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "aux": 0.0}
+        v_l0 = v_count = 0.0
+        dead_mask_val = dead_counts > cfg.threshold_dead_latent
+        with torch.inference_mode():
+            for batch in typed_dataloader(val_loader):
+                tokens = _flat_tokens(
+                    batch.embeddings.to(cfg.device),
+                    batch.attention_mask.to(cfg.device),
+                )
+                out = model(tokens)
+                recon_loss = F.mse_loss(out.recon, tokens)
+                aux_loss = loss_k_aux(
+                    model,
+                    tokens,
+                    out,
+                    dead_mask_val,
+                    k_aux=cfg.k_aux,
+                )
+                val_loss = loss_top_k(recon_loss, aux_loss, alpha_aux=cfg.alpha_aux)
+                val_terms["total"] += val_loss.item()
+                val_terms["recon"] += recon_loss.item()
+                val_terms["aux"] += aux_loss.item()
+                v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
+                v_count += out.latents.shape[0]
+
+        n_va = len(val_loader)
+        val_recon = val_terms["recon"] / n_va
+        val_total = val_terms["total"] / n_va
+        result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
+        result.val_l0.append(v_l0 / v_count)
+
+        if wandb_run is not None:
+            wandb_run.log(
+                {f"train/sae_{k}": v / n_tr for k, v in epoch_terms.items()}
+                | {f"val/sae_{k}": v / n_va for k, v in val_terms.items()}
+                | {
+                    "train/sae_l0": result.train_l0[-1],
+                    "val/sae_l0": result.val_l0[-1],
+                },
+                step=epoch + 1,
+            )
+
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
+            result.best_val_recon = val_recon
+            result.best_l0 = result.val_l0[-1]
+            best_state = {
+                k: v.detach().clone().cpu() for k, v in model.state_dict().items()
+            }
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_total": result.best_val_total,
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
+        elif _early_stop(
+            result.val_total,
+            cfg.early_stopping_patience,
+            cfg.early_stopping_min_delta,
+        ):
+            print(f"   Early stopping at epoch {epoch + 1}")
+            break
+
+    model.load_state_dict(best_state)
+    model.eval()
+    return model, result
+
+
+def _train_l1_sae(  # noqa: PLR0913, PLR0915
     model_name: str,
     latent_dim: int,
-    activation: nn.Module,
     train_ds: NextTokenDataset,
     val_ds: NextTokenDataset,
     epochs: int,
     lr: float,
     batch_size: int,
     device: torch.device,
+    lambda_l1: float,
     early_stopping_patience: int,
     early_stopping_min_delta: float,
-    lambda_l1: float = 0.0,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
     *,
-    use_l1: bool,
     normalize_decoder: bool,
 ) -> tuple[SparseAE, RunResult]:
     input_dim = train_ds.embedding_dimension
-    model = _build_sae(input_dim, latent_dim, activation, train_ds, device)
+    model = _build_sae(input_dim, latent_dim, nn.ReLU(), train_ds, device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
@@ -409,7 +535,7 @@ def _train_sae(  # noqa: PLR0913, PLR0915
 
     for epoch in trange(epochs, desc=model_name, unit="epoch"):
         model.train()
-        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         t_l0 = t_count = 0.0
         for batch in typed_dataloader(train_loader):
             tokens = _flat_tokens(
@@ -419,7 +545,7 @@ def _train_sae(  # noqa: PLR0913, PLR0915
             out = model(tokens)
             recon_loss = F.mse_loss(out.recon, tokens)
             l1_loss = out.latents.abs().mean()
-            loss = recon_loss + lambda_l1 * l1_loss if use_l1 else recon_loss
+            loss = recon_loss + lambda_l1 * l1_loss
             optimizer.zero_grad()
             loss.backward()
             if normalize_decoder:
@@ -427,6 +553,7 @@ def _train_sae(  # noqa: PLR0913, PLR0915
             optimizer.step()
             if normalize_decoder:
                 model.normalize_decoder()
+            epoch_terms["total"] += loss.item()
             epoch_terms["recon"] += recon_loss.item()
             epoch_terms["l1"] += l1_loss.item()
             with torch.no_grad():
@@ -438,7 +565,7 @@ def _train_sae(  # noqa: PLR0913, PLR0915
         result.train_l0.append(t_l0 / t_count)
 
         model.eval()
-        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         v_l0 = v_count = 0.0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
@@ -447,14 +574,17 @@ def _train_sae(  # noqa: PLR0913, PLR0915
                     batch.attention_mask.to(device),
                 )
                 out = model(tokens)
-                val_terms["recon"] += F.mse_loss(out.recon, tokens).item()
-                val_terms["l1"] += out.latents.abs().mean().item()
+                recon_loss = F.mse_loss(out.recon, tokens)
+                l1_loss = out.latents.abs().mean()
+                val_terms["total"] += (recon_loss + lambda_l1 * l1_loss).item()
+                val_terms["recon"] += recon_loss.item()
+                val_terms["l1"] += l1_loss.item()
                 v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 v_count += out.latents.shape[0]
 
         n_va = len(val_loader)
         val_recon = val_terms["recon"] / n_va
-        val_total = val_recon + lambda_l1 * val_terms["l1"] / n_va
+        val_total = val_terms["total"] / n_va
         result.val_recon.append(val_recon)
         result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)
@@ -506,22 +636,7 @@ def train_topk_sae(
 ) -> tuple[SparseAE, RunResult]:
     input_dim = train_ds.embedding_dimension
     latent_dim = cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
-    return _train_sae(
-        model_name="topk_sae",
-        latent_dim=latent_dim,
-        activation=TopK(cfg.k),
-        train_ds=train_ds,
-        val_ds=val_ds,
-        epochs=cfg.epochs,
-        lr=cfg.lr,
-        batch_size=cfg.batch_size,
-        device=cfg.device,
-        normalize_decoder=cfg.normalize_decoder,
-        early_stopping_patience=cfg.early_stopping_patience,
-        early_stopping_min_delta=cfg.early_stopping_min_delta,
-        use_l1=False,
-        wandb_run=wandb_run,
-    )
+    return _train_topk_sae(latent_dim, train_ds, val_ds, cfg, wandb_run)
 
 
 def train_sae_concept(
@@ -530,10 +645,9 @@ def train_sae_concept(
     cfg: SAEConceptConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[SparseAE, RunResult]:
-    return _train_sae(
+    return _train_l1_sae(
         model_name="sae_concept",
         latent_dim=cfg.vaee_num_embeddings,
-        activation=nn.ReLU(),
         train_ds=train_ds,
         val_ds=val_ds,
         epochs=cfg.epochs,
@@ -544,7 +658,6 @@ def train_sae_concept(
         early_stopping_patience=cfg.early_stopping_patience,
         early_stopping_min_delta=cfg.early_stopping_min_delta,
         lambda_l1=cfg.lambda_l1,
-        use_l1=True,
         wandb_run=wandb_run,
     )
 
@@ -559,10 +672,9 @@ def train_sae_param(
     ref_vaee = _build_ref_vaee(input_dim, cfg)
     latent_dim = _param_matched_latent_dim(ref_vaee, input_dim)
     del ref_vaee
-    return _train_sae(
+    return _train_l1_sae(
         model_name="sae_param",
         latent_dim=latent_dim,
-        activation=nn.ReLU(),
         train_ds=train_ds,
         val_ds=val_ds,
         epochs=cfg.epochs,
@@ -573,7 +685,6 @@ def train_sae_param(
         early_stopping_patience=cfg.early_stopping_patience,
         early_stopping_min_delta=cfg.early_stopping_min_delta,
         lambda_l1=cfg.lambda_l1,
-        use_l1=True,
         wandb_run=wandb_run,
     )
 
