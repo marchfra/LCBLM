@@ -6,7 +6,7 @@ run     Load a TOML config, train one or all model types, save results and
         checkpoints.
 export  Read one or more results JSON files and write a CSV summary suitable
         for plotting (columns: name, l0, mse).
-plot    (Coming soon) Generate L0-vs-MSE scatter from a CSV produced by export.
+plot    Generate L0-vs-MSE scatter from a CSV produced by export.
 
 Usage
 -----
@@ -29,14 +29,22 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
+import matplotlib.lines as mlines
+import matplotlib.pyplot as plt
+import pandas as pd
 import torch
+from adjustText import adjust_text
 
 from experiments.vaee_vs_sae.exp_config import DatasetConfig, RunConfig
 from experiments.vaee_vs_sae.exp_data import DATASET_REGISTRY
 from experiments.vaee_vs_sae.exp_io import load_results, save_config_json, save_results
 from experiments.vaee_vs_sae.exp_training import _run_name, run_experiment
 from lcblm.utils import get_device
+from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
+
+mpl.use("Agg")
 
 if TYPE_CHECKING:
     from sklearn.preprocessing import StandardScaler
@@ -70,6 +78,14 @@ _MODEL_SKIP_FLAGS: dict[str, dict[str, bool]] = {
     "sae_concept": {"skip_vaee": True, "skip_sae_param_matched": True},
     "sae_param": {"skip_vaee": True, "skip_sae_concept_matched": True},
 }
+
+# ── Scatter plot colours ──────────────────────────────────────────────────────
+
+_VAEE_COLOR = "#2196F3"
+_MLP_COLOR = "#90CAF9"
+_SAE_COLOR = "#FF6F00"
+_CLIPPED_COLOR = "#FFAFA0"
+_CAT_COLOR = {"shallow_vaee": _VAEE_COLOR, "other_vaee": _MLP_COLOR, "sae": _SAE_COLOR}
 
 
 # ── Grid expansion helpers ────────────────────────────────────────────────────
@@ -339,7 +355,8 @@ def cmd_export(args: argparse.Namespace) -> None:
             name = _run_name(r.model_name, r.sweep_n, r.n_concepts, run_cfg)
             rows.append({"name": name, "l0": r.best_l0, "mse": r.best_val_recon})
 
-    out_path = Path(args.out) if args.out else paths[0].parent / "summary.csv"
+    # Default: experiment_outputs/ (one level above the group subdir)
+    out_path = Path(args.out) if args.out else paths[0].parent.parent / "summary.csv"
     with out_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["name", "l0", "mse"])
         writer.writeheader()
@@ -348,13 +365,193 @@ def cmd_export(args: argparse.Namespace) -> None:
     print(f"Saved {len(rows)} rows to {out_path}")
 
 
-def cmd_plot(args: argparse.Namespace) -> None:  # noqa: ARG001
-    print(
-        "vaee-exp plot is not yet implemented.\n"
-        "Use `vaee-exp export` to produce a CSV, then plot from that.",
-        file=sys.stderr,
+def cmd_plot(args: argparse.Namespace) -> None:  # noqa: C901, PLR0915
+    csv_path = Path(args.csv)
+    if not csv_path.exists():
+        print(f"Error: CSV not found: {csv_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Optional per-point label offsets from a TOML file.
+    # Format: flat mapping of run name → [dx, dy] in points.
+    offsets: dict[str, tuple[int, int]] = {}
+    if args.offsets:
+        offsets_path = Path(args.offsets)
+        if not offsets_path.exists():
+            print(f"Error: offsets file not found: {offsets_path}", file=sys.stderr)
+            sys.exit(1)
+        with offsets_path.open("rb") as f:
+            raw = tomllib.load(f)
+        offsets = {k: (int(v[0]), int(v[1])) for k, v in raw.items()}
+
+    df = pd.read_csv(csv_path)
+    df.columns = ["name", "l0", "mse"]
+    x_max: int = args.max_l0
+
+    def _cat(name: str) -> str:
+        if name.startswith("SAE"):
+            return "sae"
+        if name.startswith("Shallow"):
+            return "shallow_vaee"
+        if "VAEE" in name:
+            return "other_vaee"
+        return "sae"
+
+    df["category"] = df["name"].map(_cat)
+    df["clipped"] = df["l0"] > x_max
+
+    set_plt_style(["grid", "science", "notebook", "mylegend"], args.mplstyles)
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    shallow = df[df["category"] == "shallow_vaee"]
+    other = df[df["category"] == "other_vaee"]
+    sae = df[df["category"] == "sae"]
+
+    ax.scatter(shallow["l0"], shallow["mse"], color=_VAEE_COLOR, s=90, zorder=4)
+    ax.scatter(
+        other["l0"],
+        other["mse"],
+        color=_MLP_COLOR,
+        s=90,
+        zorder=4,
+        edgecolors=_VAEE_COLOR,
+        linewidths=1.2,
     )
-    sys.exit(1)
+    ax.scatter(
+        sae[~sae["clipped"]]["l0"],
+        sae[~sae["clipped"]]["mse"],
+        color=_SAE_COLOR,
+        s=90,
+        zorder=4,
+    )
+    if sae["clipped"].any():
+        ax.scatter(
+            [x_max] * int(sae["clipped"].sum()),
+            sae[sae["clipped"]]["mse"],
+            color=_CLIPPED_COLOR,
+            s=90,
+            marker=">",
+            zorder=4,
+            edgecolors=_SAE_COLOR,
+            clip_on=False,
+        )
+
+    # All point coords — passed to adjustText so it can repel labels from them.
+    all_xs = df["l0"].clip(upper=x_max).tolist()
+    all_ys = df["mse"].tolist()
+
+    auto_texts = []
+    for _, row in df.iterrows():
+        name = str(row["name"])
+        clipped = bool(row["clipped"])
+        color = _CAT_COLOR[row["category"]]
+        has_at = "@" in name
+        display = name.replace("-", " ").replace("@", "\n@")
+
+        if clipped:
+            # Pinned annotation to the left of the right edge; show actual L0.
+            _, dy = offsets.get(name, (0, 3))
+            ann = ax.annotate(
+                f"{display}\n(L0 = {row['l0']:.0f})",
+                (x_max, row["mse"]),
+                textcoords="offset points",
+                xytext=(-8, dy),
+                color=color,
+                ha="right",
+                fontsize=9,
+            )
+            if has_at:
+                ann.set_multialignment("left")
+        elif name in offsets:
+            dx, dy = offsets[name]
+            ann = ax.annotate(
+                display,
+                (row["l0"], row["mse"]),
+                textcoords="offset points",
+                xytext=(dx, dy),
+                color=color,
+                ha="left",
+                fontsize=9,
+            )
+            if has_at:
+                ann.set_multialignment("left")
+        else:
+            t = ax.text(
+                row["l0"],
+                row["mse"],
+                display,
+                color=color,
+                fontsize=9,
+                ha="left",
+                multialignment="left",
+            )
+            auto_texts.append(t)
+
+    if auto_texts:
+        adjust_text(
+            auto_texts,
+            x=all_xs,
+            y=all_ys,
+            ax=ax,
+            arrowprops={"arrowstyle": "-", "color": "gray", "lw": 0.5},
+        )
+
+    ax.axvline(x=7, color="black", linestyle="--", linewidth=0.8, zorder=2, alpha=0.7)
+    ax.text(
+        7.3,
+        ax.get_ylim()[1] * 0.97,
+        "L0 = 7",
+        fontsize=8.5,
+        color="gray",
+        va="top",
+    )
+
+    ax.set_xlim(right=x_max)
+    ax.set_xlabel("L0 (mean active concepts per token)")
+    ax.set_ylabel("Validation MSE")
+    ax.set_title("Sparsity vs Reconstruction Quality: VAEE vs SparseAE", pad=12)
+
+    ax.legend(
+        handles=[
+            mlines.Line2D(
+                [],
+                [],
+                color=_VAEE_COLOR,
+                marker="o",
+                linestyle="None",
+                markersize=8,
+                label="Shallow VAEE",
+            ),
+            mlines.Line2D(
+                [],
+                [],
+                color=_MLP_COLOR,
+                marker="o",
+                linestyle="None",
+                markersize=8,
+                markeredgecolor=_VAEE_COLOR,
+                label="Other VAEE",
+            ),
+            mlines.Line2D(
+                [],
+                [],
+                color=_SAE_COLOR,
+                marker="o",
+                linestyle="None",
+                markersize=8,
+                label="SparseAE",
+            ),
+        ],
+        fontsize=12,
+    )
+
+    ax.grid(lw=0.7, alpha=0.4)
+
+    fig.tight_layout()
+
+    out_path = csv_path.parent / "l0_vs_mse.png"
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {out_path}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -401,9 +598,31 @@ def main() -> None:
 
     plot_parser = sub.add_parser(
         "plot",
-        help="(Coming soon) Generate L0-vs-MSE scatter from a CSV.",
+        help="Generate L0-vs-MSE scatter from a CSV produced by vaee-exp export.",
     )
     plot_parser.add_argument("csv", help="Path to a CSV produced by vaee-exp export.")
+    plot_parser.add_argument(
+        "--max-l0",
+        type=int,
+        default=30,
+        dest="max_l0",
+        help="Clip the x-axis at this L0 value; out-of-range points shown with '>' (default: 30).",  # noqa: E501
+    )
+    plot_parser.add_argument(
+        "--offsets",
+        type=str,
+        default="",
+        help=(
+            "Path to a TOML file mapping run names to [dx, dy] label offsets. "
+            "Named points use these offsets; all others are auto-placed by adjustText."
+        ),
+    )
+    plot_parser.add_argument(
+        "--mplstyles",
+        type=str,
+        default="mplstyles",
+        help="Path to the matplotlib stylesheet folder (default: mplstyles).",
+    )
 
     args = parser.parse_args()
 
