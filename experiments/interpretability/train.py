@@ -340,9 +340,9 @@ def train_vaee(  # noqa: PLR0915
                 v_l0 += (out.c > cfg.l0_threshold).float().sum(dim=1).sum().item()
                 v_count += out.c.shape[0]
 
-        n_va = len(val_loader)
-        val_recon = val_terms["recon"] / n_va
-        val_total = val_terms["total"] / n_va
+        n_val = len(val_loader)
+        val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
         result.val_recon.append(val_recon)
         result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)
@@ -350,7 +350,7 @@ def train_vaee(  # noqa: PLR0915
         if wandb_run is not None:
             wandb_run.log(
                 {f"train/vaee_{k}": v / n_tr for k, v in epoch_terms.items()}
-                | {f"val/vaee_{k}": v / n_va for k, v in val_terms.items()}
+                | {f"val/vaee_{k}": v / n_val for k, v in val_terms.items()}
                 | {
                     "train/vaee_l0": result.train_l0[-1],
                     "val/vaee_l0": result.val_l0[-1],
@@ -463,9 +463,9 @@ def _train_topk_sae(  # noqa: PLR0915
                 v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 v_count += out.latents.shape[0]
 
-        n_va = len(val_loader)
-        val_recon = val_terms["recon"] / n_va
-        val_total = val_terms["total"] / n_va
+        n_val = len(val_loader)
+        val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
         result.val_recon.append(val_recon)
         result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)
@@ -473,7 +473,7 @@ def _train_topk_sae(  # noqa: PLR0915
         if wandb_run is not None:
             wandb_run.log(
                 {f"train/sae_{k}": v / n_tr for k, v in epoch_terms.items()}
-                | {f"val/sae_{k}": v / n_va for k, v in val_terms.items()}
+                | {f"val/sae_{k}": v / n_val for k, v in val_terms.items()}
                 | {
                     "train/sae_l0": result.train_l0[-1],
                     "val/sae_l0": result.val_l0[-1],
@@ -582,9 +582,9 @@ def _train_l1_sae(  # noqa: PLR0913, PLR0915
                 v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 v_count += out.latents.shape[0]
 
-        n_va = len(val_loader)
-        val_recon = val_terms["recon"] / n_va
-        val_total = val_terms["total"] / n_va
+        n_val = len(val_loader)
+        val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
         result.val_recon.append(val_recon)
         result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)
@@ -592,7 +592,7 @@ def _train_l1_sae(  # noqa: PLR0913, PLR0915
         if wandb_run is not None:
             wandb_run.log(
                 {f"train/sae_{k}": v / n_tr for k, v in epoch_terms.items()}
-                | {f"val/sae_{k}": v / n_va for k, v in val_terms.items()}
+                | {f"val/sae_{k}": v / n_val for k, v in val_terms.items()}
                 | {
                     "train/sae_l0": result.train_l0[-1],
                     "val/sae_l0": result.val_l0[-1],
