@@ -59,6 +59,9 @@ class RunConfig:
             "shallow".
         vaee_embedding_size: Dimensionality of each prototype embedding vector.
         vaee_gumbel_temp: Gumbel-Sigmoid temperature (lower = more discrete).
+        vaee_l0_threshold: Gate activation threshold for L0 counting. A gate value
+            above this threshold is counted as active. 0.5 is a natural midpoint for
+            Gumbel-Sigmoid outputs.
         vaee_sigma_0: Standard deviation of the posterior embedding noise. The
             continuous latent is always sampled as z = mu + sigma_0 * eps where
             eps ~ N(0, I), at both train and eval time. Set to 0.0 to disable noise
@@ -88,13 +91,13 @@ class RunConfig:
             momentum clean) and re-normalisation after (corrects floating-point drift).
             Fixes the shrinkage problem where encoder weights shrink and decoder weights
             grow to reduce L1 without actually increasing sparsity.
-        early_stopping_patience: Number of consecutive epochs with no improvement in
-            validation reconstruction MSE before training is halted. 0 disables early
-            stopping and always trains for the full number of epochs.
-        early_stopping_min_delta: Minimum decrease in validation reconstruction MSE
-            required to count as an improvement. Epochs where the loss decreases by
-            less than this value are treated as no-improvement for patience counting.
-            Ignored when early_stopping_patience is 0.
+        early_stopping_patience: Number of recent epochs to inspect when deciding
+            whether training has stalled (sliding window over total validation loss).
+            If the total validation loss has not improved by more than
+            early_stopping_min_delta within the last patience epochs, training stops.
+            0 disables early stopping and always trains for the full number of epochs.
+        early_stopping_min_delta: Minimum improvement in total validation loss required
+            to keep training. Ignored when early_stopping_patience is 0.
         skip_vaee: If True, skip training the VAEE. The VAEE is still instantiated
             (but not trained) when skip_sae_param_matched is False, so that the
             parameter-matched latent_dim can be computed.
@@ -118,7 +121,8 @@ class RunConfig:
     vaee_encoder_type: Literal["mlp", "linear", "shallow"] = "mlp"
     vaee_embedding_size: int = 16
     vaee_gumbel_temp: float = 0.5
-    vaee_sigma_0: float = 0.0
+    vaee_l0_threshold: float = 0.5
+    vaee_sigma_0: float = 0.1
     vaee_sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine"
     vaee_topology: Literal["stacked", "summed"] = "stacked"
     vaee_pi: float = 0.1
@@ -126,9 +130,9 @@ class RunConfig:
     vaee_beta: float = 1.0
     vaee_beta_warmup_epochs: int = 0
     vaee_lambda_ent: float = 0.01
-    vaee_lambda_ortho: float = 0.0
+    vaee_lambda_ortho: float = 1e-3
     sae_lambda_l1: float = 1e-3
-    sae_normalize_decoder: bool = False
+    sae_normalize_decoder: bool = True
     early_stopping_patience: int = 0
     early_stopping_min_delta: float = 0.0
     skip_vaee: bool = False

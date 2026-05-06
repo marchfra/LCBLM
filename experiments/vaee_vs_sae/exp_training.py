@@ -96,12 +96,15 @@ class RunResult:
         n_concepts: num_embeddings for VAEE; latent_dim for SparseAE variants.
         train_recon: Per-epoch mean reconstruction MSE on the training set.
         val_recon: Per-epoch reconstruction MSE on the validation set.
+        val_total: Per-epoch total validation loss (all weighted terms combined).
         train_breakdown: Per-epoch dict of all training loss terms.
-            VAEE keys: "recon", "cond_kl", "sparsity", "entropy".
+            VAEE keys: "recon", "cond_kl", "sparsity", "entropy", "ortho".
             SparseAE keys: "recon", "l1".
-        val_breakdown: Per-epoch dict of all validation loss terms (same keys).
-        best_l0: Mean L0 evaluated on the best-checkpoint model.
-        best_val_recon: Validation reconstruction MSE of the best checkpoint.
+        val_breakdown: Per-epoch dict of all validation loss terms (same keys, plus
+            "total").
+        best_val_total: Total validation loss at the best checkpoint.
+        best_val_recon: Reconstruction MSE at the best-total-loss checkpoint.
+        best_l0: Mean L0 at the best checkpoint.
 
     """
 
@@ -109,12 +112,14 @@ class RunResult:
     n_concepts: int
     train_recon: list[float] = field(default_factory=list)
     val_recon: list[float] = field(default_factory=list)
+    val_total: list[float] = field(default_factory=list)
     train_l0: list[float] = field(default_factory=list)
     val_l0: list[float] = field(default_factory=list)
     train_breakdown: list[dict[str, float]] = field(default_factory=list)
     val_breakdown: list[dict[str, float]] = field(default_factory=list)
-    best_l0: float = float("inf")
+    best_val_total: float = float("inf")
     best_val_recon: float = float("inf")
+    best_l0: float = float("inf")
     # sweep_n is the num_embeddings value from the sweep that produced this run.
     # For VAEE and SparseAE-concept it equals n_concepts; for SparseAE-param it
     # differs (n_concepts is the parameter-matched latent_dim, sweep_n is the
@@ -122,7 +127,15 @@ class RunResult:
     sweep_n: int = -1
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _early_stop(val_total: list[float], patience: int, min_delta: float) -> bool:
+    """Return True if the last `patience` epochs show no improvement > min_delta."""
+    if patience <= 0 or len(val_total) < patience:
+        return False
+    recent = val_total[-patience:]
+    return recent[0] - min(recent) <= min_delta
 
 
 def _select_tokens(embeddings: Tensor, mask: Tensor) -> Tensor:
@@ -169,7 +182,6 @@ def train_vaee(  # noqa: PLR0913, PLR0915
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
     result = RunResult(model_name="VAEE", n_concepts=num_embeddings)
-    epochs_no_improve = 0
 
     for epoch in trange(cfg.epochs, unit="epoch"):
         if cfg.vaee_beta_warmup_epochs > 0:
@@ -225,7 +237,9 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             epoch_terms["entropy"] += loss_out.entropy_loss.item()
             epoch_terms["ortho"] += loss_out.ortho_loss.item()
             with torch.no_grad():
-                train_l0_sum += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                train_l0_sum += (
+                    (out.c > cfg.vaee_l0_threshold).float().sum(dim=1).sum().item()
+                )
                 train_l0_count += out.c.shape[0]
 
         n_batches = len(train_loader)
@@ -242,6 +256,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             "sparsity": 0.0,
             "entropy": 0.0,
             "ortho": 0.0,
+            "total": 0.0,
         }
         val_l0_sum = 0
         val_l0_count = 0
@@ -275,12 +290,17 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 val_terms["sparsity"] += loss_out.sparsity_loss.item()
                 val_terms["entropy"] += loss_out.entropy_loss.item()
                 val_terms["ortho"] += loss_out.ortho_loss.item()
-                val_l0_sum += (out.c > 1e-6).float().sum(dim=1).sum().item()  # noqa: PLR2004
+                val_terms["total"] += loss_out.total_loss.item()
+                val_l0_sum += (
+                    (out.c > cfg.vaee_l0_threshold).float().sum(dim=1).sum().item()
+                )
                 val_l0_count += out.c.shape[0]
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
         result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
         result.val_l0.append(val_l0_sum / val_l0_count)
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
@@ -295,31 +315,29 @@ def train_vaee(  # noqa: PLR0913, PLR0915
                 step=epoch + 1,
             )
 
-        if val_recon < result.best_val_recon - cfg.early_stopping_min_delta:
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
             best_state = {
                 k: v.detach().clone().cpu() for k, v in model.state_dict().items()
             }
-            epochs_no_improve = 0
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
+                        "best_val_total": result.best_val_total,
                         "best_val_recon": result.best_val_recon,
                         "best_l0": result.best_l0,
                     },
                 )
-        else:
-            epochs_no_improve += 1
-            if (
-                cfg.early_stopping_patience > 0
-                and epochs_no_improve >= cfg.early_stopping_patience
-            ):
-                print(
-                    f"   Early stopping at epoch {epoch + 1} (no improvement for "
-                    f"{epochs_no_improve} epochs)",
-                )
-                break
+
+        if _early_stop(
+            result.val_total,
+            cfg.early_stopping_patience,
+            cfg.early_stopping_min_delta,
+        ):
+            print(f"   Early stopping at epoch {epoch + 1}")
+            break
 
     model.load_state_dict(best_state)
     model.eval()
@@ -356,7 +374,6 @@ def train_sae(  # noqa: PLR0913, PLR0915
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
     result = RunResult(model_name=model_name, n_concepts=latent_dim)
-    epochs_no_improve = 0
 
     for epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
@@ -393,7 +410,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
         )
 
         model.eval()
-        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0, "total": 0.0}
         val_l0_sum = 0.0
         val_l0_count = 0
         with torch.inference_mode():
@@ -402,14 +419,19 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 mask = batch.attention_mask.to(cfg.device)
                 tokens = _select_tokens(emb, mask)
                 out = model(tokens)
-                val_terms["recon"] += F.mse_loss(out.recon, tokens).item()
-                val_terms["l1"] += out.latents.abs().mean().item()
+                recon_loss = F.mse_loss(out.recon, tokens)
+                l1_loss = out.latents.abs().mean()
+                val_terms["recon"] += recon_loss.item()
+                val_terms["l1"] += l1_loss.item()
+                val_terms["total"] += (recon_loss + cfg.sae_lambda_l1 * l1_loss).item()
                 val_l0_sum += (out.latents > 0).float().sum(dim=1).sum().item()
                 val_l0_count += out.latents.shape[0]
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
         result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
         result.val_l0.append(val_l0_sum / val_l0_count)
         result.val_breakdown.append({k: v / n_val for k, v in val_terms.items()})
 
@@ -424,31 +446,29 @@ def train_sae(  # noqa: PLR0913, PLR0915
                 step=epoch + 1,
             )
 
-        if val_recon < result.best_val_recon - cfg.early_stopping_min_delta:
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
             best_state = {
                 k: v.detach().clone().cpu() for k, v in model.state_dict().items()
             }
-            epochs_no_improve = 0
             if wandb_run is not None:
                 wandb_run.summary.update(
                     {
+                        "best_val_total": result.best_val_total,
                         "best_val_recon": result.best_val_recon,
                         "best_l0": result.best_l0,
                     },
                 )
-        else:
-            epochs_no_improve += 1
-            if (
-                cfg.early_stopping_patience > 0
-                and epochs_no_improve >= cfg.early_stopping_patience
-            ):
-                print(
-                    f"   Early stopping at epoch {epoch + 1} (no improvement for "
-                    f"{epochs_no_improve} epochs)",
-                )
-                break
+
+        if _early_stop(
+            result.val_total,
+            cfg.early_stopping_patience,
+            cfg.early_stopping_min_delta,
+        ):
+            print(f"   Early stopping at epoch {epoch + 1}")
+            break
 
     model.load_state_dict(best_state)
     model.eval()

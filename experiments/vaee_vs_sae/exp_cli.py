@@ -2,19 +2,26 @@
 
 Subcommands
 -----------
-run   Load a TOML config, train all models, save results and checkpoints, and
-      generate plots.
-plot  Load a previously saved results JSON and regenerate plots.
+run     Load a TOML config, train one or all model types, save results and
+        checkpoints.
+export  Read one or more results JSON files and write a CSV summary suitable
+        for plotting (columns: name, l0, mse).
+plot    (Coming soon) Generate L0-vs-MSE scatter from a CSV produced by export.
 
 Usage
 -----
-    vaee-exp run  experiments/vaee_vs_sae/config_sst2.toml
-    vaee-exp plot experiment_outputs/.../results.json
+    vaee-exp run  --model vaee        experiments/vaee_vs_sae/config_sst2.toml
+    vaee-exp run  --model sae_concept experiments/vaee_vs_sae/config_sst2.toml
+    vaee-exp run  --model sae_param   experiments/vaee_vs_sae/config_sst2.toml
+    vaee-exp run  experiments/vaee_vs_sae/config_sst2.toml  # all models
+
+    vaee-exp export dir_vaee/results.json dir_sae_c/results.json dir_sae_p/results.json
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import itertools
 import pickle
 import sys
@@ -27,10 +34,8 @@ import torch
 from experiments.vaee_vs_sae.exp_config import DatasetConfig, RunConfig
 from experiments.vaee_vs_sae.exp_data import DATASET_REGISTRY
 from experiments.vaee_vs_sae.exp_io import load_results, save_config_json, save_results
-from experiments.vaee_vs_sae.exp_plotting import plot_l0_recon, plot_learning_curves
-from experiments.vaee_vs_sae.exp_training import run_experiment
+from experiments.vaee_vs_sae.exp_training import _run_name, run_experiment
 from lcblm.utils import get_device
-from lcblm.utils.plotting import set_plt_style
 from lcblm.utils.seed import set_seeds
 
 if TYPE_CHECKING:
@@ -58,6 +63,13 @@ _EXCLUDED_FROM_GRID = frozenset(
         "wandb_project",
     },
 )
+
+# Maps --model values to the skip_* flags that suppress the other model types.
+_MODEL_SKIP_FLAGS: dict[str, dict[str, bool]] = {
+    "vaee": {"skip_sae_concept_matched": True, "skip_sae_param_matched": True},
+    "sae_concept": {"skip_vaee": True, "skip_sae_param_matched": True},
+    "sae_param": {"skip_vaee": True, "skip_sae_concept_matched": True},
+}
 
 
 # ── Grid expansion helpers ────────────────────────────────────────────────────
@@ -211,10 +223,8 @@ def _save_run_outputs(  # noqa: PLR0913
     ds_cfg: DatasetConfig,
     scaler: StandardScaler,
     base: Path,
-    *,
-    no_plots: bool,
 ) -> Path:
-    """Save results, checkpoints, scaler, and plots for one grid point."""
+    """Save results, checkpoints, and scaler for one grid point."""
     out_dir = _out_dir(base, group)
 
     save_results(results, run_cfg, ds_cfg, out_dir / "results.json")
@@ -229,16 +239,10 @@ def _save_run_outputs(  # noqa: PLR0913
         torch.save(model.state_dict(), ckpt_path)
         print(f"Saved checkpoint {ckpt_path.name}")
 
-    if not no_plots:
-        print("\nGenerating plots...")
-        set_plt_style(["grid", "science", "notebook", "mylegend"], "mplstyles")
-        plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
-        plot_learning_curves(results, run_cfg, out_dir)
-
     return out_dir
 
 
-def cmd_run(args: argparse.Namespace) -> None:
+def cmd_run(args: argparse.Namespace) -> None:  # noqa: C901
     config_path = Path(args.config)
     if not config_path.exists():
         print(f"Error: config file not found: {config_path}", file=sys.stderr)
@@ -258,11 +262,17 @@ def cmd_run(args: argparse.Namespace) -> None:
         if key in raw:
             ds_cfg = replace(ds_cfg, **{key: raw.pop(key)})
 
+    # --model injects skip_* flags before grid expansion.
+    if args.model is not None:
+        raw.update(_MODEL_SKIP_FLAGS[args.model])
+
     run_cfgs, grid_keys = _load_run_configs(raw)
     n_cfgs = len(run_cfgs)
 
     print(f"Dataset : {ds_cfg.name}  ({ds_cfg.input_dim} dims)")
     print(f"Device  : {run_cfgs[0].device}")
+    if args.model:
+        print(f"Model   : {args.model}")
     if n_cfgs > 1:
         print(f"Grid    : {n_cfgs} configurations over [{', '.join(grid_keys)}]")
 
@@ -302,7 +312,6 @@ def cmd_run(args: argparse.Namespace) -> None:
             ds_cfg,
             scaler,
             base,
-            no_plots=args.no_plots,
         )
         last_out_dir = out_dir
 
@@ -315,24 +324,37 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(f"\nAll done — outputs in {last_out_dir}")
 
 
-def cmd_plot(args: argparse.Namespace) -> None:
-    results_path = Path(args.results)
-    if not results_path.exists():
-        print(f"Error: results file not found: {results_path}", file=sys.stderr)
-        sys.exit(1)
+def cmd_export(args: argparse.Namespace) -> None:
+    """Write a CSV summary of best_l0 and best_val_recon for each run."""
+    paths = [Path(p) for p in args.results]
+    for p in paths:
+        if not p.exists():
+            print(f"Error: results file not found: {p}", file=sys.stderr)
+            sys.exit(1)
 
-    results, run_cfg, ds_cfg = load_results(results_path)
-    out_dir = results_path.parent
+    rows: list[dict[str, object]] = []
+    for p in paths:
+        results, run_cfg, _ = load_results(p)
+        for r in results:
+            name = _run_name(r.model_name, r.sweep_n, r.n_concepts, run_cfg)
+            rows.append({"name": name, "l0": r.best_l0, "mse": r.best_val_recon})
 
-    print(f"Loaded {len(results)} run(s) from {results_path}")
-    print(f"Dataset: {ds_cfg.name}")
-    print("Generating plots...")
+    out_path = Path(args.out) if args.out else paths[0].parent / "summary.csv"
+    with out_path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["name", "l0", "mse"])
+        writer.writeheader()
+        writer.writerows(rows)
 
-    set_plt_style(["grid", "science", "notebook", "mylegend"], args.mplstyles)
-    plot_l0_recon(results, run_cfg, ds_cfg, out_dir)
-    plot_learning_curves(results, run_cfg, out_dir)
+    print(f"Saved {len(rows)} rows to {out_path}")
 
-    print(f"\nAll done — outputs in {out_dir}")
+
+def cmd_plot(args: argparse.Namespace) -> None:  # noqa: ARG001
+    print(
+        "vaee-exp plot is not yet implemented.\n"
+        "Use `vaee-exp export` to produce a CSV, then plot from that.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -348,10 +370,10 @@ def main() -> None:
     run_parser = sub.add_parser("run", help="Train models from a TOML config file.")
     run_parser.add_argument("config", help="Path to the run config TOML file.")
     run_parser.add_argument(
-        "--no-plots",
-        action="store_true",
-        default=False,
-        help="Skip all plots.",
+        "--model",
+        choices=["vaee", "sae_concept", "sae_param"],
+        default=None,
+        help="Train only this model type (default: train all three).",
     )
     run_parser.add_argument(
         "--out-dir",
@@ -361,23 +383,34 @@ def main() -> None:
         help="Base output directory (default: experiment_outputs/ next to this file).",
     )
 
+    export_parser = sub.add_parser(
+        "export",
+        help="Export best_l0 and best_val_recon from results JSON files to a CSV.",
+    )
+    export_parser.add_argument(
+        "results",
+        nargs="+",
+        help="One or more paths to results.json files.",
+    )
+    export_parser.add_argument(
+        "--out",
+        type=str,
+        default="",
+        help="Output CSV path (default: summary.csv next to the first results file).",
+    )
+
     plot_parser = sub.add_parser(
         "plot",
-        help="Regenerate plots from a saved results JSON.",
+        help="(Coming soon) Generate L0-vs-MSE scatter from a CSV.",
     )
-    plot_parser.add_argument("results", help="Path to the results JSON file.")
-    plot_parser.add_argument(
-        "--mplstyles",
-        "-mpls",
-        type=str,
-        default="mplstyles",
-        help="Path to the matplotlib stylesheet folder.",
-    )
+    plot_parser.add_argument("csv", help="Path to a CSV produced by vaee-exp export.")
 
     args = parser.parse_args()
 
     if args.command == "run":
         cmd_run(args)
+    elif args.command == "export":
+        cmd_export(args)
     elif args.command == "plot":
         cmd_plot(args)
 
