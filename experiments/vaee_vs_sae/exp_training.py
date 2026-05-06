@@ -194,9 +194,10 @@ def train_vaee(  # noqa: PLR0913, PLR0915
 
         model.train()
         epoch_terms: dict[str, float] = {
+            "total": 0.0,
             "recon": 0.0,
-            "cond_kl": 0.0,
             "sparsity": 0.0,
+            "cond_kl": 0.0,
             "entropy": 0.0,
             "ortho": 0.0,
         }
@@ -231,6 +232,7 @@ def train_vaee(  # noqa: PLR0913, PLR0915
             optimizer.zero_grad()
             loss_out.total_loss.backward()
             optimizer.step()
+            epoch_terms["total"] += loss_out.total_loss.item()
             epoch_terms["recon"] += loss_out.recon_loss.item()
             epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
             epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
@@ -251,12 +253,12 @@ def train_vaee(  # noqa: PLR0913, PLR0915
 
         model.eval()
         val_terms: dict[str, float] = {
+            "total": 0.0,
             "recon": 0.0,
-            "cond_kl": 0.0,
             "sparsity": 0.0,
+            "cond_kl": 0.0,
             "entropy": 0.0,
             "ortho": 0.0,
-            "total": 0.0,
         }
         val_l0_sum = 0
         val_l0_count = 0
@@ -377,7 +379,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
 
     for epoch in trange(cfg.epochs, unit="epoch"):
         model.train()
-        epoch_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0}
+        epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         train_l0_sum = 0.0
         train_l0_count = 0
         for batch in typed_dataloader(train_loader):
@@ -396,6 +398,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
             optimizer.step()
             if cfg.sae_normalize_decoder:
                 model.normalize_decoder()
+            epoch_terms["total"] += loss.item()
             epoch_terms["recon"] += recon_loss.item()
             epoch_terms["l1"] += l1_loss.item()
             with torch.no_grad():
@@ -410,7 +413,7 @@ def train_sae(  # noqa: PLR0913, PLR0915
         )
 
         model.eval()
-        val_terms: dict[str, float] = {"recon": 0.0, "l1": 0.0, "total": 0.0}
+        val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         val_l0_sum = 0.0
         val_l0_count = 0
         with torch.inference_mode():
