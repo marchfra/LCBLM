@@ -13,7 +13,7 @@ class Sentence(NamedTuple):
     embeddings: Tensor
     next_token_ids: Tensor
     next_attention_mask: Tensor
-    word_ids: Tensor | None = None
+    word_ids: Tensor
 
 
 class NextTokenDataset(Dataset[Sentence]):
@@ -102,7 +102,9 @@ class NextTokenDataset(Dataset[Sentence]):
                 embeddings=self.embeddings[index],
                 next_token_ids=self._next_token_ids[index],
                 next_attention_mask=self.attention_mask[index],
-                word_ids=self.word_ids[index] if self.word_ids is not None else None,
+                word_ids=self.word_ids[index]
+                if self.word_ids is not None
+                else torch.empty(0),
             )
 
         if isinstance(index, (list, range)):
