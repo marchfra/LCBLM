@@ -366,31 +366,33 @@ def compute_loss(  # noqa: PLR0913
     """
     recon_loss = mse_loss(input, target)
 
-    mu_dist = torch.sum((mu - prototypes.unsqueeze(0)) ** 2, dim=-1)
-    mu_norm = torch.sum(mu**2, dim=-1)
+    # mean over E so each element is O(1) regardless of embedding_size
+    mu_dist = torch.mean((mu - prototypes.unsqueeze(0)) ** 2, dim=-1)
+    mu_norm = torch.mean(mu**2, dim=-1)
 
     alpha_sg = alpha.detach()
     cond_kl = alpha_sg * mu_dist + (1 - alpha_sg) * mu_norm
-    cond_kl_loss = cond_kl.sum(dim=-1).mean()
+    cond_kl_loss = cond_kl.mean()  # mean over batch and K
 
     mean_alpha = alpha.mean(dim=0)
     mean_alpha = clamp_0_1(mean_alpha)
     term_1 = mean_alpha * torch.log((mean_alpha) / pi)
     term_2 = (1 - mean_alpha) * torch.log((1 - mean_alpha) / (1 - pi))
     sparsity_kl = term_1 + term_2
-    sparsity_loss = sparsity_kl.sum()
+    sparsity_loss = sparsity_kl.mean()  # mean over K
 
     term_1 = -alpha * torch.log(alpha + 1e-8)
     term_2 = -(1 - alpha) * torch.log(1 - alpha + 1e-8)
     entropy = term_1 + term_2
-    entropy_loss = entropy.sum(dim=-1).mean()
+    entropy_loss = entropy.mean()  # mean over batch and K
 
     if lambda_ortho > 0 and decoder_weight is not None:
+        n_pairs = num_embeddings * (num_embeddings - 1) / 2
         ortho_loss = compute_decoder_ortho_loss(
             decoder_weight,
             num_embeddings,
             embedding_size,
-        )
+        ) / max(1.0, n_pairs)  # normalise by number of pairs
     else:
         ortho_loss = target.new_zeros(1)
 
