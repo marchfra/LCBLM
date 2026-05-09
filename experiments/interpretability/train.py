@@ -555,7 +555,7 @@ def _train_l1_sae(  # noqa: PLR0913, PLR0915
                 model.normalize_decoder()
             epoch_terms["total"] += loss.item()
             epoch_terms["recon"] += recon_loss.item()
-            epoch_terms["l1"] += l1_loss.item()
+            epoch_terms["l1"] += lambda_l1 * l1_loss.item()
             with torch.no_grad():
                 t_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 t_count += out.latents.shape[0]
@@ -578,7 +578,7 @@ def _train_l1_sae(  # noqa: PLR0913, PLR0915
                 l1_loss = out.latents.abs().mean()
                 val_terms["total"] += (recon_loss + lambda_l1 * l1_loss).item()
                 val_terms["recon"] += recon_loss.item()
-                val_terms["l1"] += l1_loss.item()
+                val_terms["l1"] += lambda_l1 * l1_loss.item()
                 v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 v_count += out.latents.shape[0]
 
