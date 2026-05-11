@@ -1,0 +1,40 @@
+# VAEE — SST-2 / Mistral-7B
+# Copy to vaee_sst2.toml and set embeddings_path before running.
+#
+# Usage:
+#   ct-train vaee experiments/concept_training/configs/vaee_sst2.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1                                       # -1 = all sentences
+
+# ── Training ──────────────────────────────────────────────────────────────────
+epochs = 3000
+lr = 1e-4
+batch_size = 2048
+seed = 42
+
+early_stopping_patience = 500
+early_stopping_min_delta = 0.0
+
+# ── VAEE architecture (required) ──────────────────────────────────────────────
+num_embeddings = 256
+embedding_size = 128
+pi = 0.05
+
+# ── VAEE architecture (optional) ──────────────────────────────────────────────
+encoder_type = "shallow" # "mlp" | "linear" | "shallow"
+gumbel_temp = 0.5
+sigma_0 = 0.1
+sim_metric = "cosine"    # "cosine" | "inner_product" | "neg_euclidean"
+topology = "stacked"     # "stacked" | "summed"
+
+# ── VAEE loss ─────────────────────────────────────────────────────────────────
+gamma = 1.0
+beta = 4.0
+lambda_ent = 1.0
+lambda_ortho = 0.0
+
+# ── Weights & Biases ──────────────────────────────────────────────────────────
+# wandb_project = "lcblm"

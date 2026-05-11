@@ -1,0 +1,30 @@
+# L1 SAE (param-matched) — SST-2 / Mistral-7B
+# latent_dim is set to match the parameter count of the reference VAEE.
+# Copy to sae_param_sst2.toml and set embeddings_path before running.
+#
+# Usage:
+#   ct-train sae_param experiments/concept_training/configs/sae_param_sst2.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1
+
+# ── Training ──────────────────────────────────────────────────────────────────
+epochs = 3000
+lr = 1e-4
+batch_size = 2048
+seed = 42
+
+early_stopping_patience = 500
+early_stopping_min_delta = 0.0
+
+# ── Reference VAEE (for parameter matching only) ──────────────────────────────
+vaee_num_embeddings = 256
+vaee_embedding_size = 128
+
+# ── SAE loss ──────────────────────────────────────────────────────────────────
+lambda_l1 = 1e-3
+
+# ── Weights & Biases ──────────────────────────────────────────────────────────
+# wandb_project = "lcblm"

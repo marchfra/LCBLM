@@ -30,12 +30,9 @@ dependencies = [
 ]
 
 [project.scripts]
-embae-exp = "experiments.embae_comparison.exp_cli:main"
-vaee-exp = "experiments.vaee_vs_sae.exp_cli:main"
-vaee-mnist = "experiments.vaee_mnist.exp_cli:main"
-interp-train = "experiments.interpretability.train:main"
-interp-cd = "experiments.interpretability.build_cd:main"
-interp-intervene = "experiments.interpretability.intervene:main"
+ct-train = "experiments.concept_training.train:main"
+ct-cd = "experiments.concept_training.build_cd:main"
+ct-plot = "experiments.concept_training.plot:main"
 extract-emb = "lcblm.extract_embeddings:main"
 
 [dependency-groups]

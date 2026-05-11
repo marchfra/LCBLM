@@ -1,0 +1,37 @@
+# TopK SAE multi-run sweep — SST-2 / Mistral-7B
+# Copy to topk_sae_multi.toml and set embeddings_path before running.
+#
+# Shared fields apply to every [[runs]] entry. Per-run fields override them.
+# Required fields (k) go in each [[runs]] entry.
+#
+# Usage:
+#   ct-train topk_sae experiments/concept_training/configs/topk_sae_multi.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs = 3000
+lr = 1e-4
+batch_size = 2048
+seed = 42
+early_stopping_patience = 500
+early_stopping_min_delta = 0.0
+
+# ── Shared architecture defaults ──────────────────────────────────────────────
+latent_dim = 0           # 0 → 4 × input_dim for all runs
+
+# wandb_project = "lcblm"
+
+# ── Per-run configurations ────────────────────────────────────────────────────
+
+[[runs]]
+k = 32
+
+[[runs]]
+k = 64
+
+[[runs]]
+k = 128

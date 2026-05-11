@@ -36,25 +36,22 @@ pytest tests/path/to/test_file.py::test_function_name
 extract-emb --model mistralai/Mistral-7B-v0.1 --dataset SetFit/sst2 --output-dir ./embeddings/sst2_mistral
 # Add --stride S to slice long documents into S-token-hop windows instead of truncating
 
-# Run experiment CLIs (copy *.example.toml to *.toml first and edit as needed)
-embae-exp run experiments/embae_comparison/config_mnist.toml
-vaee-exp run experiments/vaee_vs_sae/config_sst2.toml
+# Train a concept model (copy *.example.toml to *.toml first and set embeddings_path)
+ct-train vaee        experiments/concept_training/configs/vaee_sst2.toml
+ct-train topk_sae    experiments/concept_training/configs/topk_sae_sst2.toml
+ct-train sae_concept experiments/concept_training/configs/sae_concept_sst2.toml
+ct-train sae_param   experiments/concept_training/configs/sae_param_sst2.toml
 
-# Regenerate plots from saved results
-embae-exp plot experiments/embae_comparison/experiment_outputs/.../results.json
-vaee-exp plot experiments/vaee_vs_sae/experiment_outputs/.../results.json
-
-# Interpretability experiment (run each model type independently or in parallel)
-interp-train run --model vaee        experiments/interpretability/configs/vaee_sst2.toml
-interp-train run --model topk_sae    experiments/interpretability/configs/topk_sae_sst2.toml
-interp-train run --model sae_concept experiments/interpretability/configs/sae_concept_sst2.toml
-interp-train run --model sae_param   experiments/interpretability/configs/sae_param_sst2.toml
+# Multi-run sweep: [[runs]] array in TOML trains configs sequentially
+ct-train vaee        experiments/concept_training/configs/vaee_multi.toml
+ct-train topk_sae    experiments/concept_training/configs/topk_sae_multi.toml
 
 # Build concept dictionary HTML from a trained checkpoint
-interp-cd --run-dir experiments/interpretability/outputs/... --model vaee
+ct-cd --run-dir experiments/concept_training/outputs/VAEE-256x128-...
 
-# Concept intervention during generation (not yet implemented)
-interp-intervene --run-dir experiments/interpretability/outputs/... --model vaee --prompt "..."
+# L0-MSE scatter plot from one or more run directories
+ct-plot experiments/concept_training/outputs/VAEE-50x64-... experiments/concept_training/outputs/TopK-64-SAE-4096-...
+ct-plot experiments/concept_training/outputs/  # all subdirs
 ```
 
 Commits are validated by commitizen (conventional commit format). Pre-commit hooks run ruff and uv-lock on every commit.
@@ -65,7 +62,7 @@ After each major change to the project (new experiment, new architecture, new CL
 
 ### Active development
 
-Current focus is `experiments/vaee_vs_sae/`, which compares VAEE and SparseAE architectures trained on pre-extracted Mistral-7B token embeddings. Earlier work built out `src/lcblm/embedding_ae/` (`EmbeddingAE`) and `src/lcblm/vaee/` (`VAEE`), both of which are now stable. The numbered scripts in `src/lcblm/scripts/` and the notebooks have not been actively maintained and may be out of sync with the rest of the codebase.
+Current focus is `experiments/concept_training/`, which trains VAEE and SparseAE models on pre-extracted Mistral-7B token embeddings and supports concept dictionary analysis. Earlier work built out `src/lcblm/embedding_ae/` (`EmbeddingAE`) and `src/lcblm/vaee/` (`VAEE`), both of which are now stable. The numbered scripts in `src/lcblm/scripts/` and the notebooks have not been actively maintained and may be out of sync with the rest of the codebase.
 
 This is a research codebase, so it intentionally contains many exploratory branches and parallel approaches.
 
@@ -83,7 +80,13 @@ This is a research codebase, so it intentionally contains many exploratory branc
 
 **`src/lcblm/vaee/`** — `VAEE`, a VAE with discrete prototype embeddings and Gumbel-Sigmoid gates. Takes a configurable `output_activation` (defaults to `nn.Identity` for unbounded inputs; pass `nn.Sigmoid()` for image data).
 
-**`src/lcblm/extract_embeddings.py`** — `extract-emb` CLI. Tokenises a HuggingFace dataset with a backbone LLM and saves `extracted_features_{split}.pt` files (keys: `input_ids`, `attention_masks`, `embeddings`, `word_ids`). Supports optional striding for long documents. Output is compatible with `experiments/interpretability/data.py`.
+**`src/lcblm/training/`** — shared training library used by `concept_training`:
+- `configs.py`: `VAEEConfig`, `TopKSAEConfig`, `SAEConceptConfig`, `SAEParamConfig`, `DatasetConfig`
+- `data.py`: `load_embeddings()`, `load_split()`, `save_scaler()`, `load_scaler()`
+- `models.py`: `build_vaee()`, `build_sae()`, `build_ref_vaee()`, `param_matched_latent_dim()`, `resolve_latent_dim()`
+- `loops.py`: `train_vaee()`, `train_topk_sae()`, `train_sae_concept()`, `train_sae_param()`, `RunResult`
+
+**`src/lcblm/extract_embeddings.py`** — `extract-emb` CLI. Tokenises a HuggingFace dataset with a backbone LLM and saves `extracted_features_{split}.pt` files (keys: `input_ids`, `attention_masks`, `embeddings`, `word_ids`). Supports optional striding for long documents. Output is compatible with `lcblm.training.data`.
 
 **`src/lcblm/utils/`** — shared utilities
 - `data/`: `NextTokenDataset`, `TokenizedDataset`, `TypedDataLoader`
@@ -93,18 +96,14 @@ This is a research codebase, so it intentionally contains many exploratory branc
 
 ### Experiments
 
-Each experiment lives in its own self-contained directory with a CLI (`exp_cli.py`), config dataclasses (`exp_config.py`), and TOML config files. Use `embae_comparison` as the template for new experiment directories.
+**`experiments/concept_training/`** — canonical experiment for training and analysing concept models. Three CLIs:
+- `ct-train <model> <config.toml>` — trains one model type (`vaee`, `topk_sae`, `sae_concept`, `sae_param`). Supports single-run and multi-run (`[[runs]]` array-of-tables) TOML configs. Output dirs are named `{ModelType}-{hyperparams}-{timestamp}/` and contain a checkpoint, `*_meta.json`, `scaler.pkl`, `config.json`, and `results.json`.
+- `ct-cd --run-dir <outputs/...>` — loads a checkpoint and writes a self-contained HTML concept dictionary from per-token concept activations.
+- `ct-plot <run_dir> [<run_dir> ...]` — reads `results.json` from each run dir and generates an L0-MSE scatter plot. Pass a parent dir to process all subdirs at once. `--csv PATH` also writes a CSV of the raw metrics.
 
-**`experiments/embae_comparison/`** (`embae-exp`) — compares `EmbeddingAE` and `SparseAE` on image datasets (MNIST, Digits). Sweeps over `n_concepts`.
+Config files are in `experiments/concept_training/configs/` (copy `*.example.toml` → `*.toml` and set `embeddings_path`). Shared training fields (`embeddings_path`, `eos_token_id`, `n_samples`, `epochs`, `lr`, `batch_size`, `seed`, `early_stopping_*`, `wandb_project`) sit at the top level; model-specific hyperparameters go in `[[runs]]` entries (or at the top level for single-run configs).
 
-**`experiments/vaee_vs_sae/`** (`vaee-exp`) — compares `VAEE` against two `SparseAE` baselines (concept-matched and parameter-matched) on pre-extracted Mistral-7B SST-2 token embeddings. Sweeps over `num_embeddings`, producing L0-MSE scatter plots and learning curves. Saves checkpoints, a fitted `StandardScaler`, and `results.json` for plot regeneration without retraining.
-
-**`experiments/interpretability/`** — trains concept models on pre-extracted LLM embeddings and analyses their interpretability. Three CLIs:
-- `interp-train run --model <type> <config.toml>` — trains one model type at a time (run each independently or in parallel). Model types: `vaee`, `topk_sae`, `sae_concept`, `sae_param`. Saves checkpoint, `*_meta.json`, `scaler.pkl`, `config.json`, and `results.json` under a timestamped `outputs/` subdirectory.
-- `interp-cd --run-dir <outputs/...> --model <type>` — loads a checkpoint and writes a self-contained HTML concept dictionary from per-token concept activations.
-- `interp-intervene --run-dir <outputs/...> --model <type> --prompt "..." --zero ... --scale ...` — forward-hook-based concept steering during autoregressive generation (not yet implemented).
-
-Config files are in `experiments/interpretability/configs/` (copy `*.example.toml` → `*.toml` and set `embeddings_path`). Each model type has its own TOML schema; shared fields are `embeddings_path`, `eos_token_id`, `n_samples`, `epochs`, `lr`, `batch_size`, `seed`, `early_stopping_patience`, `early_stopping_min_delta`, `wandb_project`.
+**`experiments/embae_comparison/`** and **`experiments/vaee_vs_sae/`** and **`experiments/interpretability/`** — earlier experiments, soft-retired (directories kept for reference; entry points removed from pyproject.toml).
 
 ### Platform notes
 
