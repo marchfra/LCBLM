@@ -152,14 +152,14 @@ class VAEE(nn.Module):
 
             # Stochastic z
             eps = torch.randn_like(mu)
-            z = mu + self.sigma_0 * eps
+            ungated_z = mu + self.sigma_0 * eps
         else:
             # Deterministic at eval
             c = alpha
-            z = mu
+            ungated_z = mu
 
         # Gate z by c
-        z = c.unsqueeze(-1) * z
+        z = c.unsqueeze(-1) * ungated_z
 
         return z, c
 
