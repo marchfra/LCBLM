@@ -108,7 +108,7 @@ def _load_configs(
     ds_fields = set(DatasetConfig.__dataclass_fields__)
     ds_raw = {k: raw.pop(k) for k in list(raw) if k in ds_fields}
     if not ds_raw.get("name"):
-        ds_raw["name"] = toml_path.stem
+        ds_raw["name"] = Path(ds_raw["embeddings_path"]).name
     ds_cfg = DatasetConfig(**ds_raw)
 
     cfg_cls = MODEL_CONFIG_CLASSES[model_type]
