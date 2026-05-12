@@ -276,7 +276,7 @@ def train_topk_sae(  # noqa: C901, PLR0915
                 model.normalize_decoder()
             epoch_terms["total"] += loss.item()
             epoch_terms["recon"] += recon_loss.item()
-            epoch_terms["aux"] += aux_loss.item()
+            epoch_terms["aux"] += cfg.alpha_aux * aux_loss.item()
             with torch.no_grad():
                 t_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 t_count += out.latents.shape[0]
@@ -307,7 +307,7 @@ def train_topk_sae(  # noqa: C901, PLR0915
                 val_loss = loss_top_k(recon_loss, aux_loss, alpha_aux=cfg.alpha_aux)
                 val_terms["total"] += val_loss.item()
                 val_terms["recon"] += recon_loss.item()
-                val_terms["aux"] += aux_loss.item()
+                val_terms["aux"] += cfg.alpha_aux * aux_loss.item()
                 v_l0 += (out.latents > 0).float().sum(dim=1).sum().item()
                 v_count += out.latents.shape[0]
 
