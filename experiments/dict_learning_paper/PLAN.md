@@ -179,7 +179,8 @@ Three tracks run in parallel; sync at end of each week. Track A is the experimen
 ### Track B — Writing (1 person, full-time)
 
 **Week 1**
-- Days 1-3: Set up paper template, figure placeholders. Identify target workshop and confirm format.
+- Day 1: **Produce a detailed paper-structure plan before any drafting begins.** Section-by-section outline of the workshop paper: what each section claims/argues, how existing material from `probabilistic_formulation_v7.pdf` + `research_note.pdf` maps into it, what's missing and needs to be written from scratch, and where the 7 headline metrics and 4 datasets land. User approves the plan before tex work starts. No prose, no figure placeholders, no tex edits until this is approved.
+- Days 2-3: Set up paper template, figure placeholders. Identify target workshop and confirm format.
 - Days 3-7: Draft theory section based on `probabilistic_formulation_v7.pdf` + `research_note.pdf`. Outline empirical section.
 
 **Week 2**
