@@ -21,15 +21,14 @@ class VAEE(nn.Module):
 
     def __init__(  # noqa: PLR0913
         self,
-        input_dim: int = 784,
-        hidden_dim: int = 256,
-        num_embeddings: int = 16,
-        embedding_size: int = 16,
+        input_dim: int,
+        num_embeddings: int,
+        embedding_size: int,
         gumbel_temp: float = 0.5,
         output_activation: nn.Module | None = None,
-        *,
-        encoder_type: Literal["mlp", "linear", "shallow"] = "mlp",
-        sigma_0: float = 1.0,
+        encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
+        hidden_dim: int = 256,
+        sigma_0: float = 0.1,
         sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine",
         topology: Literal["stacked", "summed"] = "stacked",
     ) -> None:
