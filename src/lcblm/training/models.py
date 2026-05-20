@@ -15,7 +15,7 @@ from lcblm.training.configs import (
     VAEEConfig,
     VQVAEConfig,
 )
-from lcblm.utils.data import NextTokenDataset  # noqa: TC001
+from lcblm.utils.data import FlatTensorDataset  # noqa: TC001
 from lcblm.vaee.models import VAEE
 
 
@@ -54,7 +54,7 @@ def build_sae(  # noqa: PLR0913
     input_dim: int,
     latent_dim: int,
     activation: nn.Module,
-    train_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
     device: torch.device,
     *,
     tied_bias: bool = True,
@@ -63,10 +63,10 @@ def build_sae(  # noqa: PLR0913
         input_dim=input_dim,
         latent_dim=latent_dim,
         activation=activation,
+        use_tied_bias=tied_bias,
     ).to(device)
     if tied_bias:
-        flat = train_ds.embeddings[train_ds.attention_mask].cpu()
-        model.init_tied_bias(compute_tied_bias(flat, sample_every=15))
+        model.init_tied_bias(compute_tied_bias(train_ds.data.cpu(), sample_every=15))
     return model
 
 

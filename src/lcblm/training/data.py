@@ -18,7 +18,7 @@ from pathlib import Path
 import torch
 from sklearn.preprocessing import StandardScaler
 
-from lcblm.utils.data import NextTokenDataset
+from lcblm.utils.data import FlatTensorDataset, NextTokenDataset
 
 
 def _normalise(emb: torch.Tensor, scaler: StandardScaler) -> torch.Tensor:
@@ -119,6 +119,16 @@ def load_split(
         _normalise(raw["embeddings"].float(), scaler),
         eos_token_id,
     )
+
+
+def flatten_token_dataset(ds: NextTokenDataset) -> FlatTensorDataset:
+    """Materialise the attended-to tokens of a NextTokenDataset as a flat dataset.
+
+    Each unpadded token becomes one (input_dim,) sample. Used to feed
+    token-embedding data into the dict-learning training loops, which consume
+    flat ``FlatTensorDataset`` instances uniformly with image/synthetic data.
+    """
+    return FlatTensorDataset(ds.embeddings[ds.attention_mask])
 
 
 def save_scaler(scaler: StandardScaler, path: Path) -> None:

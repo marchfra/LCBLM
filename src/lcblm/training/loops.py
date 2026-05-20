@@ -36,7 +36,7 @@ from lcblm.training.models import (
     build_vq_vae,
     param_matched_latent_dim,
 )
-from lcblm.utils.data import NextTokenDataset, typed_dataloader
+from lcblm.utils.data import FlatTensorDataset  # noqa: TC001
 from lcblm.vaee.models import VAEE, compute_loss
 
 # ── Result ────────────────────────────────────────────────────────────────────
@@ -60,10 +60,6 @@ class RunResult:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _flat_tokens(embeddings: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    return embeddings[mask]
-
-
 def _early_stop(val_total: list[float], patience: int, min_delta: float) -> bool:
     if patience <= 0 or len(val_total) < patience:
         return False
@@ -75,12 +71,12 @@ def _early_stop(val_total: list[float], patience: int, min_delta: float) -> bool
 
 
 def train_vaee(  # noqa: PLR0915
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: VAEEConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[VAEE, RunResult]:
-    input_dim = train_ds.embedding_dimension
+    input_dim = train_ds.input_dim
     model = build_vaee(input_dim, cfg)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
@@ -99,11 +95,8 @@ def train_vaee(  # noqa: PLR0915
             "ortho": 0.0,
         }
         t_l0 = t_count = 0.0
-        for batch in typed_dataloader(train_loader):
-            tokens = _flat_tokens(
-                batch.embeddings.to(cfg.device),
-                batch.attention_mask.to(cfg.device),
-            )
+        for batch in train_loader:
+            tokens = batch.to(cfg.device)
             out = model(tokens)
             decoder_weight = (
                 model.decoder_first_weight()
@@ -153,11 +146,8 @@ def train_vaee(  # noqa: PLR0915
         }
         v_l0 = v_count = 0.0
         with torch.inference_mode():
-            for batch in typed_dataloader(val_loader):
-                tokens = _flat_tokens(
-                    batch.embeddings.to(cfg.device),
-                    batch.attention_mask.to(cfg.device),
-                )
+            for batch in val_loader:
+                tokens = batch.to(cfg.device)
                 out = model(tokens)
                 loss_out = compute_loss(
                     target=tokens,
@@ -245,12 +235,12 @@ def train_vaee(  # noqa: PLR0915
 
 
 def train_topk_sae(  # noqa: C901, PLR0915
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: TopKSAEConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[SparseAE, RunResult]:
-    input_dim = train_ds.embedding_dimension
+    input_dim = train_ds.input_dim
     latent_dim = cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
     model = build_sae(input_dim, latent_dim, TopK(cfg.k), train_ds, cfg.device)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
@@ -266,11 +256,8 @@ def train_topk_sae(  # noqa: C901, PLR0915
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "aux": 0.0}
         t_l0 = t_count = 0.0
 
-        for batch in typed_dataloader(train_loader):
-            tokens = _flat_tokens(
-                batch.embeddings.to(cfg.device),
-                batch.attention_mask.to(cfg.device),
-            )
+        for batch in train_loader:
+            tokens = batch.to(cfg.device)
             out = model(tokens)
             dead_counts = update_dead_latent_counts(out.latents.detach(), dead_counts)
             dead_mask = dead_counts > cfg.threshold_dead_latent
@@ -300,11 +287,8 @@ def train_topk_sae(  # noqa: C901, PLR0915
         v_l0 = v_count = 0.0
         dead_mask_val = dead_counts > cfg.threshold_dead_latent
         with torch.inference_mode():
-            for batch in typed_dataloader(val_loader):
-                tokens = _flat_tokens(
-                    batch.embeddings.to(cfg.device),
-                    batch.attention_mask.to(cfg.device),
-                )
+            for batch in val_loader:
+                tokens = batch.to(cfg.device)
                 out = model(tokens)
                 recon_loss = F.mse_loss(out.recon, tokens)
                 aux_loss = loss_k_aux(
@@ -371,12 +355,12 @@ def train_topk_sae(  # noqa: C901, PLR0915
 def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
     model_name: str,
     latent_dim: int,
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: SAEConceptConfig | SAEParamConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[SparseAE, RunResult]:
-    input_dim = train_ds.embedding_dimension
+    input_dim = train_ds.input_dim
     model = build_sae(
         input_dim,
         latent_dim,
@@ -395,11 +379,8 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
         model.train()
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         t_l0 = t_count = 0.0
-        for batch in typed_dataloader(train_loader):
-            tokens = _flat_tokens(
-                batch.embeddings.to(cfg.device),
-                batch.attention_mask.to(cfg.device),
-            )
+        for batch in train_loader:
+            tokens = batch.to(cfg.device)
             out = model(tokens)
             recon_loss = F.mse_loss(out.recon, tokens)
             l1_loss = out.latents.abs().mean()
@@ -426,11 +407,8 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
         val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         v_l0 = v_count = 0.0
         with torch.inference_mode():
-            for batch in typed_dataloader(val_loader):
-                tokens = _flat_tokens(
-                    batch.embeddings.to(cfg.device),
-                    batch.attention_mask.to(cfg.device),
-                )
+            for batch in val_loader:
+                tokens = batch.to(cfg.device)
                 out = model(tokens)
                 recon_loss = F.mse_loss(out.recon, tokens)
                 l1_loss = out.latents.abs().mean()
@@ -488,8 +466,8 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
 
 
 def train_sae_concept(
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: SAEConceptConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[SparseAE, RunResult]:
@@ -504,12 +482,12 @@ def train_sae_concept(
 
 
 def train_sae_param(
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: SAEParamConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[SparseAE, RunResult]:
-    input_dim = train_ds.embedding_dimension
+    input_dim = train_ds.input_dim
     ref_vaee = build_ref_vaee(input_dim, cfg)
     latent_dim = param_matched_latent_dim(ref_vaee, input_dim)
     del ref_vaee
@@ -517,12 +495,12 @@ def train_sae_param(
 
 
 def train_vq_vae(  # noqa: C901, PLR0915
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: VQVAEConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[VQVAE, RunResult]:
-    input_dim = train_ds.embedding_dimension
+    input_dim = train_ds.input_dim
     model = build_vq_vae(input_dim, cfg)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
@@ -540,11 +518,8 @@ def train_vq_vae(  # noqa: C901, PLR0915
         }
         t_codes_used: set[int] = set()
         t_count = 0.0
-        for batch in typed_dataloader(train_loader):
-            tokens = _flat_tokens(
-                batch.embeddings.to(cfg.device),
-                batch.attention_mask.to(cfg.device),
-            )
+        for batch in train_loader:
+            tokens = batch.to(cfg.device)
             out = model(tokens)
             loss_out = compute_vq_vae_loss(
                 target=tokens,
@@ -579,11 +554,8 @@ def train_vq_vae(  # noqa: C901, PLR0915
         v_codes_used: set[int] = set()
         v_count = 0.0
         with torch.inference_mode():
-            for batch in typed_dataloader(val_loader):
-                tokens = _flat_tokens(
-                    batch.embeddings.to(cfg.device),
-                    batch.attention_mask.to(cfg.device),
-                )
+            for batch in val_loader:
+                tokens = batch.to(cfg.device)
                 out = model(tokens)
                 loss_out = compute_vq_vae_loss(
                     target=tokens,
@@ -647,12 +619,12 @@ def train_vq_vae(  # noqa: C901, PLR0915
 
 
 def train_beta_vae(  # noqa: C901, PLR0915
-    train_ds: NextTokenDataset,
-    val_ds: NextTokenDataset,
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
     cfg: BetaVAEConfig,
     wandb_run: wandb.sdk.wandb_run.Run | None = None,
 ) -> tuple[BetaVAE, RunResult]:
-    input_dim = train_ds.embedding_dimension
+    input_dim = train_ds.input_dim
     model = build_beta_vae(input_dim, cfg)
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
@@ -664,11 +636,8 @@ def train_beta_vae(  # noqa: C901, PLR0915
         model.train()
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
         t_l0 = t_count = 0.0
-        for batch in typed_dataloader(train_loader):
-            tokens = _flat_tokens(
-                batch.embeddings.to(cfg.device),
-                batch.attention_mask.to(cfg.device),
-            )
+        for batch in train_loader:
+            tokens = batch.to(cfg.device)
             out = model(tokens)
             loss_out = compute_beta_vae_loss(target=tokens, out=out, beta=cfg.beta)
             optimizer.zero_grad()
@@ -690,11 +659,8 @@ def train_beta_vae(  # noqa: C901, PLR0915
         val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
         v_l0 = v_count = 0.0
         with torch.inference_mode():
-            for batch in typed_dataloader(val_loader):
-                tokens = _flat_tokens(
-                    batch.embeddings.to(cfg.device),
-                    batch.attention_mask.to(cfg.device),
-                )
+            for batch in val_loader:
+                tokens = batch.to(cfg.device)
                 out = model(tokens)
                 loss_out = compute_beta_vae_loss(
                     target=tokens,

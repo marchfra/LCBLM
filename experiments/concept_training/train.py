@@ -47,7 +47,7 @@ from lcblm.training.configs import (
     VAEEConfig,
     _BaseConfig,
 )
-from lcblm.training.data import load_embeddings, save_scaler
+from lcblm.training.data import flatten_token_dataset, load_embeddings, save_scaler
 from lcblm.training.loops import (
     train_sae_concept,
     train_sae_param,
@@ -189,6 +189,8 @@ def _run_one(  # noqa: PLR0913
     model_type = _CFG_TO_MODEL_TYPE[type(cfg)]
     input_dim = train_ds.embedding_dimension
     latent_dim = _resolve_latent_dim(cfg, input_dim)
+    train_flat = flatten_token_dataset(train_ds)
+    val_flat = flatten_token_dataset(val_ds)
     auto_name = _auto_run_name(cfg, latent_dim)
     timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     out_dir = base / f"{run_name_override or auto_name}-{timestamp}"
@@ -222,7 +224,7 @@ def _run_one(  # noqa: PLR0913
     ckpt_dir.mkdir(exist_ok=True)
 
     if isinstance(cfg, VAEEConfig):
-        model, result = train_vaee(train_ds, val_ds, cfg, wandb_run)
+        model, result = train_vaee(train_flat, val_flat, cfg, wandb_run)
         metadata = {
             "model_type": model_type,
             "input_dim": input_dim,
@@ -234,7 +236,7 @@ def _run_one(  # noqa: PLR0913
             "best_l0": result.best_l0,
         }
     elif isinstance(cfg, TopKSAEConfig):
-        model, result = train_topk_sae(train_ds, val_ds, cfg, wandb_run)
+        model, result = train_topk_sae(train_flat, val_flat, cfg, wandb_run)
         metadata = {
             "model_type": model_type,
             "input_dim": input_dim,
@@ -244,7 +246,7 @@ def _run_one(  # noqa: PLR0913
             "best_l0": result.best_l0,
         }
     elif isinstance(cfg, SAEConceptConfig):
-        model, result = train_sae_concept(train_ds, val_ds, cfg, wandb_run)
+        model, result = train_sae_concept(train_flat, val_flat, cfg, wandb_run)
         metadata = {
             "model_type": model_type,
             "input_dim": input_dim,
@@ -253,7 +255,7 @@ def _run_one(  # noqa: PLR0913
             "best_l0": result.best_l0,
         }
     elif isinstance(cfg, SAEParamConfig):
-        model, result = train_sae_param(train_ds, val_ds, cfg, wandb_run)
+        model, result = train_sae_param(train_flat, val_flat, cfg, wandb_run)
         metadata = {
             "model_type": model_type,
             "input_dim": input_dim,
