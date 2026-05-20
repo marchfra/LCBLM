@@ -94,7 +94,7 @@ To accurately invert the generative flow ($x \to z \to c$), the inference model 
 \[
 \alpha_k(x) = \operatorname{sigmoid}\!\left(\frac{\operatorname{sim}(\mu_k(x), h_k)}{\tau}\right)
 \]
-In practice, $1/\tau$ is a single learnable scalar (initialised so that $\tau = 0.1$, clamped to $[1, 100]$ at inference), mirroring the CLIP logit-scale parameterisation; the same scale is applied uniformly to all three similarity metrics defined below.
+In practice, $1/\tau$ is a single learnable scalar (initialised so that $\tau = 0.1$, clamped to $[1, 100]$ at inference{\color{red}\footnote{\color{red}isn't it always clamped?}}), mirroring the CLIP logit-scale parameterisation; the same scale is applied uniformly to all three similarity metrics defined below.
 To enable end-to-end optimization through the discrete mask, we draw the actual latent activation $c_k$ using the continuous Gumbel-Sigmoid relaxation during training, parameterized by a Gumbel temperature $\tau_g$:
 \[
 c_k \sim \text{Gumbel-Sigmoid}(\alpha_k(x), \tau_g)
@@ -137,7 +137,7 @@ Translating the analytical ELBO into a training objective requires a few deviati
     \]
     which is maximal at $\alpha=1/2$ and zero at the binary extremes; minimising it drives $\alpha$ toward $\{0,1\}$. The motivation is interpretability and alignment with the binary nature of $c$ in the prior --- this is a practical add-on, not a rearrangement of an ELBO term.
 
-    \item \textbf{Mean reductions over $K$ and the embedding dimension $d$.} The factors $1/(BD)$, $1/(BKd)$, $1/(BK)$, $1/K$ in the loss below make each term's magnitude independent of the model dimensions, so the same $\gamma, \beta, \lambda_{\text{ent}}$ values transfer across architectures of different sizes without rescaling.
+\item \textbf{Mean reductions over $K$ and the embedding dimension $d$.} The factors $1/(BD)${\color{red}\footnote{\color{red}$D$ is input data dimension, right?}}, $1/(BKd)$, $1/(BK)$, $1/K$ in the loss below make each term's magnitude independent of the model dimensions, so the same $\gamma, \beta, \lambda_{\text{ent}}$ values transfer across architectures of different sizes without rescaling.
 
     \item \textbf{Stop-gradient on $\alpha$.} The $\mathrm{sg}(\cdot)$ operator (\texttt{.detach()}) inside the conditional embedding KL prevents the network from driving $\alpha_{i,k} \to 0$ solely to minimise the $\gamma$ structural penalty. (Appendix~A.2 covers its additional load-bearing role in restoring the closed-form KL under the structured factorisation.)
 \end{itemize}
@@ -237,6 +237,8 @@ To prevent redundant bases and enforce functional diversity across the dictionar
 \]
 From a Bayesian perspective, this penalty corresponds to Maximum A Posteriori (MAP) estimation under a structural prior $p(\phi)$ that heavily favors orthogonal basis weights. Mathematically forbidding $W_i$ and $W_j$ from mapping to the same downstream features fundamentally prevents capacity cannibalization. Once the network is restricted from using redundant slots to reconstruct high-frequency modes, the optimizer naturally allocates freed slots to span the remaining unexplained variance in the dataset.
 
+{\color{red}This term was later dropped since we observed empirically that its contribution to the loss was negligible, and we expect that randomly-initialized subspaces of a big vector space be orthogonal, so this was deemd redundant.}
+
 \subsection{Related Work}
 
 Our probabilistic formulation conceptually bridges several established paradigms in representation learning, structurally formalizing the relationships between discrete routing and continuous generation.
@@ -269,7 +271,7 @@ Splitting the right-hand side into a likelihood ratio and a prior ratio gives:
 \text{Log-Odds} = \underbrace{\log \frac{p(z_k \mid c_k = 1)}{p(z_k \mid c_k = 0)}}_{\text{likelihood ratio}} + \underbrace{\log \frac{p(c_k = 1)}{p(c_k = 0)}}_{= \log \frac{\pi}{1-\pi} \,=\, \operatorname{logit}(\pi)}
 \]
 
-The prior ratio is just the logit of the Bernoulli activation probability $\pi$. For the likelihood ratio we substitute the Gated Gaussian densities $p(z_k \mid c_k = 1) = \mathcal{N}(z_k; h_k, I)$ and $p(z_k \mid c_k = 0) = \mathcal{N}(z_k; 0, I)$. The two distributions share the same isotropic covariance, so the $(2\pi)^{-d/2}$ normalising constants cancel inside the log-ratio:
+The prior ratio is just the logit of the Bernoulli activation probability $\pi$. For the likelihood ratio we substitute the Gated Gaussian densities $p(z_k \mid c_k = 1) = \mathcal{N}(z_k; h_k, I)$ and $p(z_k \mid c_k = 0) = \mathcal{N}(z_k; 0, I)${\color{red}\footnote{\color{red}shouldn't it be $\sigma_0^2 I$?}}. The two distributions share the same isotropic covariance, so the $(2\pi)^{-d/2}$ normalising constants cancel inside the log-ratio:
 \[
 \log \frac{p(z_k \mid c_k = 1)}{p(z_k \mid c_k = 0)}
 \;=\;
