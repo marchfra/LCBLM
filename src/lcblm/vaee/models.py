@@ -25,12 +25,12 @@ class VAEE(nn.Module):
         num_embeddings: int,
         embedding_size: int,
         gumbel_temp: float = 0.5,
-        output_activation: nn.Module | None = None,
-        encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
-        hidden_dim: int = 256,
         sigma_0: float = 0.1,
         sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine",
         topology: Literal["stacked", "summed"] = "stacked",
+        encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
+        hidden_dim: int = 256,
+        output_activation: nn.Module | None = None,
     ) -> None:
         if num_embeddings <= 0:
             msg = "num_embeddings must be non-negative."
