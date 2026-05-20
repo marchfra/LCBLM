@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import torch
 import torch.nn.functional as F  # noqa: N812
-from torch import nn, optim
+from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
@@ -36,6 +38,7 @@ from lcblm.training.models import (
     build_vq_vae,
     param_matched_latent_dim,
 )
+from lcblm.eval.metrics import alive_dict_size as _alive_dict_size
 from lcblm.utils.data import FlatTensorDataset  # noqa: TC001
 from lcblm.vaee.models import VAEE, compute_loss
 
@@ -55,6 +58,7 @@ class RunResult:
     best_val_total: float = float("inf")
     best_val_recon: float = float("inf")
     best_l0: float = float("inf")
+    alive_dict_size: int = 0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -65,6 +69,27 @@ def _early_stop(val_total: list[float], patience: int, min_delta: float) -> bool
         return False
     recent = val_total[-patience:]
     return recent[0] - min(recent) <= min_delta
+
+
+def _vq_one_hot(indices: Tensor, num_codes: int) -> Tensor:
+    b = indices.shape[0]
+    one_hot = torch.zeros(b, num_codes)
+    one_hot.scatter_(1, indices.cpu().unsqueeze(1), 1.0)
+    return one_hot
+
+
+def _compute_alive(
+    model: nn.Module,
+    val_loader: DataLoader,
+    device: torch.device,
+    extract: Callable[[Any], Tensor],
+) -> int:
+    parts: list[Tensor] = []
+    with torch.inference_mode():
+        for batch in val_loader:
+            out = model(batch.to(device))
+            parts.append(extract(out).cpu())
+    return _alive_dict_size(torch.cat(parts, dim=0))
 
 
 # ── Training loops ────────────────────────────────────────────────────────────
@@ -231,6 +256,10 @@ def train_vaee(  # noqa: PLR0915
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    threshold = cfg.l0_threshold
+    result.alive_dict_size = _compute_alive(
+        model, val_loader, cfg.device, lambda out: (out.c > threshold).float()
+    )
     return model, result
 
 
@@ -349,6 +378,9 @@ def train_topk_sae(  # noqa: C901, PLR0915
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    result.alive_dict_size = _compute_alive(
+        model, val_loader, cfg.device, lambda out: out.latents
+    )
     return model, result
 
 
@@ -462,6 +494,9 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    result.alive_dict_size = _compute_alive(
+        model, val_loader, cfg.device, lambda out: out.latents
+    )
     return model, result
 
 
@@ -615,6 +650,11 @@ def train_vq_vae(  # noqa: C901, PLR0915
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    num_codes = cfg.num_codes
+    result.alive_dict_size = _compute_alive(
+        model, val_loader, cfg.device,
+        lambda out: _vq_one_hot(out.indices, num_codes),
+    )
     return model, result
 
 
@@ -718,4 +758,9 @@ def train_beta_vae(  # noqa: C901, PLR0915
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    l0_threshold = cfg.l0_threshold
+    result.alive_dict_size = _compute_alive(
+        model, val_loader, cfg.device,
+        lambda out: (out.mu.abs() > l0_threshold).float(),
+    )
     return model, result

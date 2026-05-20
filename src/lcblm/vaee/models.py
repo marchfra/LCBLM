@@ -31,6 +31,7 @@ class VAEE(nn.Module):
         encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
         hidden_dim: int = 256,
         output_activation: nn.Module | None = None,
+        hard_gate: bool = True,
     ) -> None:
         if num_embeddings <= 0:
             msg = "num_embeddings must be non-negative."
@@ -53,6 +54,7 @@ class VAEE(nn.Module):
         self.sigma_0 = sigma_0
         self.sim_metric = sim_metric
         self.topology = topology
+        self.hard_gate = hard_gate
 
         self._output_activation = (
             output_activation if output_activation is not None else nn.Identity()
@@ -157,8 +159,8 @@ class VAEE(nn.Module):
             c = alpha
             ungated_z = mu
 
-        # Gate z by c
-        z = c.unsqueeze(-1) * ungated_z
+        # Gate z by c (architectural hard gate; can be disabled for ablation)
+        z = c.unsqueeze(-1) * ungated_z if self.hard_gate else ungated_z
 
         return z, c
 
