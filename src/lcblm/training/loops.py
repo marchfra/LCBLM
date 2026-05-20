@@ -11,19 +11,29 @@ from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
 import wandb  # noqa: TC001
+from lcblm.baselines import (
+    BetaVAE,
+    VQVAE,
+    compute_beta_vae_loss,
+    compute_vq_vae_loss,
+)
 from lcblm.sae_utils import SparseAE, TopK
 from lcblm.sae_utils.activations import update_dead_latent_counts
 from lcblm.sae_utils.losses import loss_k_aux, loss_top_k
 from lcblm.training.configs import (  # noqa: TC001
+    BetaVAEConfig,
     SAEConceptConfig,
     SAEParamConfig,
     TopKSAEConfig,
     VAEEConfig,
+    VQVAEConfig,
 )
 from lcblm.training.models import (
+    build_beta_vae,
     build_ref_vaee,
     build_sae,
     build_vaee,
+    build_vq_vae,
     param_matched_latent_dim,
 )
 from lcblm.utils.data import NextTokenDataset, typed_dataloader
@@ -504,3 +514,242 @@ def train_sae_param(
     latent_dim = param_matched_latent_dim(ref_vaee, input_dim)
     del ref_vaee
     return _train_l1_sae("sae_param", latent_dim, train_ds, val_ds, cfg, wandb_run)
+
+
+def train_vq_vae(  # noqa: C901, PLR0915
+    train_ds: NextTokenDataset,
+    val_ds: NextTokenDataset,
+    cfg: VQVAEConfig,
+    wandb_run: wandb.sdk.wandb_run.Run | None = None,
+) -> tuple[VQVAE, RunResult]:
+    input_dim = train_ds.embedding_dimension
+    model = build_vq_vae(input_dim, cfg)
+    optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
+    result = RunResult(model_name="vq_vae", n_concepts=cfg.num_codes)
+    best_state: dict | None = None
+
+    for epoch in trange(cfg.epochs, desc="VQ-VAE", unit="epoch"):
+        model.train()
+        epoch_terms: dict[str, float] = {
+            "total": 0.0,
+            "recon": 0.0,
+            "codebook": 0.0,
+            "commitment": 0.0,
+        }
+        t_codes_used: set[int] = set()
+        t_count = 0.0
+        for batch in typed_dataloader(train_loader):
+            tokens = _flat_tokens(
+                batch.embeddings.to(cfg.device),
+                batch.attention_mask.to(cfg.device),
+            )
+            out = model(tokens)
+            loss_out = compute_vq_vae_loss(
+                target=tokens,
+                out=out,
+                commitment_weight=cfg.commitment_weight,
+            )
+            optimizer.zero_grad()
+            loss_out.total_loss.backward()
+            optimizer.step()
+            epoch_terms["total"] += loss_out.total_loss.item()
+            epoch_terms["recon"] += loss_out.recon_loss.item()
+            epoch_terms["codebook"] += loss_out.codebook_loss.item()
+            epoch_terms["commitment"] += (
+                cfg.commitment_weight * loss_out.commitment_loss.item()
+            )
+            with torch.no_grad():
+                t_codes_used.update(out.indices.unique().cpu().tolist())
+                t_count += out.indices.shape[0]
+
+        n_tr = len(train_loader)
+        result.train_recon.append(epoch_terms["recon"] / n_tr)
+        # Per-sample L0 is 1 by construction for hard VQ.
+        result.train_l0.append(1.0)
+
+        model.eval()
+        val_terms: dict[str, float] = {
+            "total": 0.0,
+            "recon": 0.0,
+            "codebook": 0.0,
+            "commitment": 0.0,
+        }
+        v_codes_used: set[int] = set()
+        v_count = 0.0
+        with torch.inference_mode():
+            for batch in typed_dataloader(val_loader):
+                tokens = _flat_tokens(
+                    batch.embeddings.to(cfg.device),
+                    batch.attention_mask.to(cfg.device),
+                )
+                out = model(tokens)
+                loss_out = compute_vq_vae_loss(
+                    target=tokens,
+                    out=out,
+                    commitment_weight=cfg.commitment_weight,
+                )
+                val_terms["total"] += loss_out.total_loss.item()
+                val_terms["recon"] += loss_out.recon_loss.item()
+                val_terms["codebook"] += loss_out.codebook_loss.item()
+                val_terms["commitment"] += (
+                    cfg.commitment_weight * loss_out.commitment_loss.item()
+                )
+                v_codes_used.update(out.indices.unique().cpu().tolist())
+                v_count += out.indices.shape[0]
+
+        n_val = len(val_loader)
+        val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
+        result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
+        result.val_l0.append(1.0)
+
+        if wandb_run is not None:
+            wandb_run.log(
+                {f"train/vq_{k}": v / n_tr for k, v in epoch_terms.items()}
+                | {f"val/vq_{k}": v / n_val for k, v in val_terms.items()}
+                | {
+                    "train/vq_codes_used": len(t_codes_used),
+                    "val/vq_codes_used": len(v_codes_used),
+                },
+                step=epoch + 1,
+            )
+
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
+            result.best_val_recon = val_recon
+            result.best_l0 = result.val_l0[-1]
+            best_state = {
+                k: v.detach().clone().cpu() for k, v in model.state_dict().items()
+            }
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_total": result.best_val_total,
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
+        elif _early_stop(
+            result.val_total,
+            cfg.early_stopping_patience,
+            cfg.early_stopping_min_delta,
+        ):
+            print(f"   Early stopping at epoch {epoch + 1}")
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    model.eval()
+    return model, result
+
+
+def train_beta_vae(  # noqa: C901, PLR0915
+    train_ds: NextTokenDataset,
+    val_ds: NextTokenDataset,
+    cfg: BetaVAEConfig,
+    wandb_run: wandb.sdk.wandb_run.Run | None = None,
+) -> tuple[BetaVAE, RunResult]:
+    input_dim = train_ds.embedding_dimension
+    model = build_beta_vae(input_dim, cfg)
+    optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
+    result = RunResult(model_name="beta_vae", n_concepts=cfg.latent_dim)
+    best_state: dict | None = None
+
+    for epoch in trange(cfg.epochs, desc="β-VAE", unit="epoch"):
+        model.train()
+        epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
+        t_l0 = t_count = 0.0
+        for batch in typed_dataloader(train_loader):
+            tokens = _flat_tokens(
+                batch.embeddings.to(cfg.device),
+                batch.attention_mask.to(cfg.device),
+            )
+            out = model(tokens)
+            loss_out = compute_beta_vae_loss(target=tokens, out=out, beta=cfg.beta)
+            optimizer.zero_grad()
+            loss_out.total_loss.backward()
+            optimizer.step()
+            epoch_terms["total"] += loss_out.total_loss.item()
+            epoch_terms["recon"] += loss_out.recon_loss.item()
+            epoch_terms["kl"] += cfg.beta * loss_out.kl_loss.item()
+            with torch.no_grad():
+                active = (out.mu.abs() > cfg.l0_threshold).float()
+                t_l0 += active.sum(dim=1).sum().item()
+                t_count += out.mu.shape[0]
+
+        n_tr = len(train_loader)
+        result.train_recon.append(epoch_terms["recon"] / n_tr)
+        result.train_l0.append(t_l0 / t_count)
+
+        model.eval()
+        val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
+        v_l0 = v_count = 0.0
+        with torch.inference_mode():
+            for batch in typed_dataloader(val_loader):
+                tokens = _flat_tokens(
+                    batch.embeddings.to(cfg.device),
+                    batch.attention_mask.to(cfg.device),
+                )
+                out = model(tokens)
+                loss_out = compute_beta_vae_loss(
+                    target=tokens,
+                    out=out,
+                    beta=cfg.beta,
+                )
+                val_terms["total"] += loss_out.total_loss.item()
+                val_terms["recon"] += loss_out.recon_loss.item()
+                val_terms["kl"] += cfg.beta * loss_out.kl_loss.item()
+                active = (out.mu.abs() > cfg.l0_threshold).float()
+                v_l0 += active.sum(dim=1).sum().item()
+                v_count += out.mu.shape[0]
+
+        n_val = len(val_loader)
+        val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
+        result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
+        result.val_l0.append(v_l0 / v_count)
+
+        if wandb_run is not None:
+            wandb_run.log(
+                {f"train/bvae_{k}": v / n_tr for k, v in epoch_terms.items()}
+                | {f"val/bvae_{k}": v / n_val for k, v in val_terms.items()}
+                | {
+                    "train/bvae_l0": result.train_l0[-1],
+                    "val/bvae_l0": result.val_l0[-1],
+                },
+                step=epoch + 1,
+            )
+
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
+            result.best_val_recon = val_recon
+            result.best_l0 = result.val_l0[-1]
+            best_state = {
+                k: v.detach().clone().cpu() for k, v in model.state_dict().items()
+            }
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_total": result.best_val_total,
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
+        elif _early_stop(
+            result.val_total,
+            cfg.early_stopping_patience,
+            cfg.early_stopping_min_delta,
+        ):
+            print(f"   Early stopping at epoch {epoch + 1}")
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    model.eval()
+    return model, result

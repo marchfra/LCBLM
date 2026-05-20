@@ -85,6 +85,26 @@ class SAEParamConfig(_BaseConfig):
     normalize_decoder: bool = True
 
 
+@dataclass(frozen=True, kw_only=True)
+class VQVAEConfig(_BaseConfig):
+    """VQ-VAE dict-learning baseline (single Linear enc/dec around codebook)."""
+
+    num_codes: int
+    embedding_dim: int = 64
+    commitment_weight: float = 0.25
+
+
+@dataclass(frozen=True, kw_only=True)
+class BetaVAEConfig(_BaseConfig):
+    """β-VAE dict-learning baseline (single Linear enc/dec around z, no MLP)."""
+
+    latent_dim: int
+    beta: float
+    # Threshold on |μ| for reporting how many latent dimensions are "active"
+    # per sample. Disentanglement-literature convention; used for L0 reporting.
+    l0_threshold: float = 0.5
+
+
 @dataclass(frozen=True)
 class DatasetConfig:
     embeddings_path: str
@@ -98,4 +118,6 @@ MODEL_CONFIG_CLASSES: dict[str, type] = {
     "topk_sae": TopKSAEConfig,
     "sae_concept": SAEConceptConfig,
     "sae_param": SAEParamConfig,
+    "vq_vae": VQVAEConfig,
+    "beta_vae": BetaVAEConfig,
 }

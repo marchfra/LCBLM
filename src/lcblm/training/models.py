@@ -5,9 +5,16 @@ from __future__ import annotations
 import torch  # noqa: TC002
 from torch import nn  # noqa: TC002
 
+from lcblm.baselines import BetaVAE, VQVAE
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.dataset import compute_tied_bias
-from lcblm.training.configs import SAEParamConfig, TopKSAEConfig, VAEEConfig
+from lcblm.training.configs import (
+    BetaVAEConfig,
+    SAEParamConfig,
+    TopKSAEConfig,
+    VAEEConfig,
+    VQVAEConfig,
+)
 from lcblm.utils.data import NextTokenDataset  # noqa: TC001
 from lcblm.vaee.models import VAEE
 
@@ -74,3 +81,15 @@ def resolve_latent_dim(input_dim: int, cfg: TopKSAEConfig | SAEParamConfig) -> i
         return cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
     ref = build_ref_vaee(input_dim, cfg)
     return param_matched_latent_dim(ref, input_dim)
+
+
+def build_vq_vae(input_dim: int, cfg: VQVAEConfig) -> VQVAE:
+    return VQVAE(
+        input_dim=input_dim,
+        num_codes=cfg.num_codes,
+        embedding_dim=cfg.embedding_dim,
+    ).to(cfg.device)
+
+
+def build_beta_vae(input_dim: int, cfg: BetaVAEConfig) -> BetaVAE:
+    return BetaVAE(input_dim=input_dim, latent_dim=cfg.latent_dim).to(cfg.device)
