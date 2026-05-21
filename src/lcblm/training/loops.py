@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -10,24 +11,15 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
-import wandb  # noqa: TC001
 from lcblm.baselines import (
-    BetaVAE,
     VQVAE,
+    BetaVAE,
     compute_beta_vae_loss,
     compute_vq_vae_loss,
 )
 from lcblm.sae_utils import SparseAE, TopK
 from lcblm.sae_utils.activations import update_dead_latent_counts
 from lcblm.sae_utils.losses import loss_k_aux, loss_top_k
-from lcblm.training.configs import (  # noqa: TC001
-    BetaVAEConfig,
-    SAEConceptConfig,
-    SAEParamConfig,
-    TopKSAEConfig,
-    VAEEConfig,
-    VQVAEConfig,
-)
 from lcblm.training.models import (
     build_beta_vae,
     build_ref_vaee,
@@ -36,8 +28,20 @@ from lcblm.training.models import (
     build_vq_vae,
     param_matched_latent_dim,
 )
-from lcblm.utils.data import FlatTensorDataset  # noqa: TC001
+from lcblm.utils.data import typed_dataloader
 from lcblm.vaee.models import VAEE, compute_loss
+
+if TYPE_CHECKING:
+    import wandb
+    from lcblm.training.configs import (
+        BetaVAEConfig,
+        SAEConceptConfig,
+        SAEParamConfig,
+        TopKSAEConfig,
+        VAEEConfig,
+        VQVAEConfig,
+    )
+    from lcblm.utils.data import FlatTensorDataset
 
 # ── Result ────────────────────────────────────────────────────────────────────
 
@@ -95,7 +99,7 @@ def train_vaee(  # noqa: PLR0915
             "ortho": 0.0,
         }
         t_l0 = t_count = 0.0
-        for batch in train_loader:
+        for batch in typed_dataloader(train_loader):
             tokens = batch.to(cfg.device)
             out = model(tokens)
             decoder_weight = (
@@ -146,7 +150,7 @@ def train_vaee(  # noqa: PLR0915
         }
         v_l0 = v_count = 0.0
         with torch.inference_mode():
-            for batch in val_loader:
+            for batch in typed_dataloader(val_loader):
                 tokens = batch.to(cfg.device)
                 out = model(tokens)
                 loss_out = compute_loss(
@@ -256,7 +260,7 @@ def train_topk_sae(  # noqa: C901, PLR0915
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "aux": 0.0}
         t_l0 = t_count = 0.0
 
-        for batch in train_loader:
+        for batch in typed_dataloader(train_loader):
             tokens = batch.to(cfg.device)
             out = model(tokens)
             dead_counts = update_dead_latent_counts(out.latents.detach(), dead_counts)
@@ -287,7 +291,7 @@ def train_topk_sae(  # noqa: C901, PLR0915
         v_l0 = v_count = 0.0
         dead_mask_val = dead_counts > cfg.threshold_dead_latent
         with torch.inference_mode():
-            for batch in val_loader:
+            for batch in typed_dataloader(val_loader):
                 tokens = batch.to(cfg.device)
                 out = model(tokens)
                 recon_loss = F.mse_loss(out.recon, tokens)
@@ -379,7 +383,7 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
         model.train()
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         t_l0 = t_count = 0.0
-        for batch in train_loader:
+        for batch in typed_dataloader(train_loader):
             tokens = batch.to(cfg.device)
             out = model(tokens)
             recon_loss = F.mse_loss(out.recon, tokens)
@@ -407,7 +411,7 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
         val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "l1": 0.0}
         v_l0 = v_count = 0.0
         with torch.inference_mode():
-            for batch in val_loader:
+            for batch in typed_dataloader(val_loader):
                 tokens = batch.to(cfg.device)
                 out = model(tokens)
                 recon_loss = F.mse_loss(out.recon, tokens)
@@ -494,7 +498,7 @@ def train_sae_param(
     return _train_l1_sae("sae_param", latent_dim, train_ds, val_ds, cfg, wandb_run)
 
 
-def train_vq_vae(  # noqa: C901, PLR0915
+def train_vq_vae(  # noqa: PLR0915
     train_ds: FlatTensorDataset,
     val_ds: FlatTensorDataset,
     cfg: VQVAEConfig,
@@ -517,8 +521,7 @@ def train_vq_vae(  # noqa: C901, PLR0915
             "commitment": 0.0,
         }
         t_codes_used: set[int] = set()
-        t_count = 0.0
-        for batch in train_loader:
+        for batch in typed_dataloader(train_loader):
             tokens = batch.to(cfg.device)
             out = model(tokens)
             loss_out = compute_vq_vae_loss(
@@ -537,7 +540,6 @@ def train_vq_vae(  # noqa: C901, PLR0915
             )
             with torch.no_grad():
                 t_codes_used.update(out.indices.unique().cpu().tolist())
-                t_count += out.indices.shape[0]
 
         n_tr = len(train_loader)
         result.train_recon.append(epoch_terms["recon"] / n_tr)
@@ -552,9 +554,8 @@ def train_vq_vae(  # noqa: C901, PLR0915
             "commitment": 0.0,
         }
         v_codes_used: set[int] = set()
-        v_count = 0.0
         with torch.inference_mode():
-            for batch in val_loader:
+            for batch in typed_dataloader(val_loader):
                 tokens = batch.to(cfg.device)
                 out = model(tokens)
                 loss_out = compute_vq_vae_loss(
@@ -569,7 +570,6 @@ def train_vq_vae(  # noqa: C901, PLR0915
                     cfg.commitment_weight * loss_out.commitment_loss.item()
                 )
                 v_codes_used.update(out.indices.unique().cpu().tolist())
-                v_count += out.indices.shape[0]
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
@@ -618,7 +618,7 @@ def train_vq_vae(  # noqa: C901, PLR0915
     return model, result
 
 
-def train_beta_vae(  # noqa: C901, PLR0915
+def train_beta_vae(  # noqa: PLR0915
     train_ds: FlatTensorDataset,
     val_ds: FlatTensorDataset,
     cfg: BetaVAEConfig,
@@ -636,7 +636,7 @@ def train_beta_vae(  # noqa: C901, PLR0915
         model.train()
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
         t_l0 = t_count = 0.0
-        for batch in train_loader:
+        for batch in typed_dataloader(train_loader):
             tokens = batch.to(cfg.device)
             out = model(tokens)
             loss_out = compute_beta_vae_loss(target=tokens, out=out, beta=cfg.beta)
@@ -659,7 +659,7 @@ def train_beta_vae(  # noqa: C901, PLR0915
         val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
         v_l0 = v_count = 0.0
         with torch.inference_mode():
-            for batch in val_loader:
+            for batch in typed_dataloader(val_loader):
                 tokens = batch.to(cfg.device)
                 out = model(tokens)
                 loss_out = compute_beta_vae_loss(

@@ -32,9 +32,9 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
-from sklearn.preprocessing import StandardScaler  # noqa: TC002
 from torch import nn
 
 import wandb
@@ -56,7 +56,11 @@ from lcblm.training.loops import (
 )
 from lcblm.training.models import build_ref_vaee, param_matched_latent_dim
 from lcblm.utils import get_device, set_seeds
-from lcblm.utils.data import NextTokenDataset  # noqa: TC001
+
+if TYPE_CHECKING:
+    from sklearn.preprocessing import StandardScaler
+
+    from lcblm.utils.data import NextTokenDataset
 
 try:
     import tomllib

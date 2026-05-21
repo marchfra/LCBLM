@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Literal
-
-import torch  # noqa: TC002
+from typing import TYPE_CHECKING, Literal
 
 from lcblm.utils import get_device
+
+if TYPE_CHECKING:
+    import torch
 
 
 @dataclass(frozen=True)

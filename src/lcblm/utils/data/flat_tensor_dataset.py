@@ -15,7 +15,9 @@ class FlatTensorDataset(Dataset[Tensor]):
 
     def __init__(self, data: Tensor) -> None:
         if data.ndim != 2:  # noqa: PLR2004
-            msg = f"FlatTensorDataset expects a 2D tensor, got shape {tuple(data.shape)}."
+            msg = (
+                f"FlatTensorDataset expects a 2D tensor, got shape {tuple(data.shape)}."
+            )
             raise ValueError(msg)
         self.data = data
 
