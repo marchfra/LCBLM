@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from torchvision.datasets import FashionMNIST, MNIST
+from torchvision.datasets import MNIST, FashionMNIST
 
 from lcblm.utils.data import FlatTensorDataset
 
@@ -40,16 +40,26 @@ def _load_tv_flat(
 
 
 def load_mnist(
-    root: str, split: str, n_samples: int | None = None
+    root: str,
+    split: str,
+    n_samples: int | None = None,
 ) -> FlatTensorDataset:
-    """Load MNIST train data, 80/20 split. Returns FlatTensorDataset with input_dim=784."""
+    """Load MNIST train data, 80/20 split.
+
+    Returns FlatTensorDataset with input_dim=784.
+    """
     return _load_tv_flat(MNIST, root, split, n_samples)
 
 
 def load_fmnist(
-    root: str, split: str, n_samples: int | None = None
+    root: str,
+    split: str,
+    n_samples: int | None = None,
 ) -> FlatTensorDataset:
-    """Load FashionMNIST train data, 80/20 split. Returns FlatTensorDataset with input_dim=784."""
+    """Load FashionMNIST train data, 80/20 split.
+
+    Returns FlatTensorDataset with input_dim=784.
+    """
     return _load_tv_flat(FashionMNIST, root, split, n_samples)
 
 

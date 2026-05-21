@@ -12,7 +12,7 @@ def alive_dict_size(
     latent_activations: Tensor,
     threshold: float = 0.01,
 ) -> int:
-    """Count latent dimensions that fire on at least threshold × N samples."""
+    """Count latent dimensions that fire on at least threshold x N samples."""
     n = latent_activations.shape[0]
     fire_counts = (latent_activations > 0).float().sum(0)  # [latent_dim]
     return int((fire_counts >= threshold * n).sum().item())

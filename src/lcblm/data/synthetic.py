@@ -6,7 +6,7 @@ from torch import Tensor
 from lcblm.utils.data import FlatTensorDataset
 
 
-def make_synthetic(
+def make_synthetic(  # noqa: PLR0913
     n_samples: int = 50_000,
     n_features: int = 512,
     n_active: int = 5,
@@ -25,7 +25,8 @@ def make_synthetic(
     features = torch.randn(n_features, input_dim, generator=rng)
     features = features / features.norm(dim=1, keepdim=True).clamp(min=1e-8)
 
-    # Vectorised: for each sample, random-shuffle feature indices and take first n_active.
+    # Vectorised: for each sample, random-shuffle feature indices and take first
+    # n_active.
     rand_vals = torch.rand(n_samples, n_features, generator=rng)
     indices = rand_vals.argsort(dim=1)[:, :n_active]  # [N, n_active]
 
