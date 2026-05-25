@@ -72,6 +72,9 @@ def _load_datasets(
 # ── Per-model run ─────────────────────────────────────────────────────────────
 
 
+_SHARED_KEYS = frozenset({"epochs", "lr", "batch_size", "early_stopping_patience"})
+
+
 def _run_one(
     model_name: str,
     sparsity_key: str,
@@ -82,7 +85,8 @@ def _run_one(
     val_ds: FlatTensorDataset,
     device: torch.device,
 ) -> RunResult:
-    common = dict(**fixed, device=device)
+    overrides = {k: v for k, v in model_cfg.items() if k in _SHARED_KEYS}
+    common = dict(**fixed, **overrides, device=device)
 
     if model_name == "vaee":
         cfg = VAEEConfig(
@@ -116,6 +120,7 @@ def _run_one(
             **common,
             latent_dim=model_cfg["latent_dim"],
             beta=float(sparsity_val),
+            kl_warmup_epochs=int(model_cfg.get("kl_warmup_epochs", 0)),
         )
         _, result = train_beta_vae(train_ds, val_ds, cfg)
 

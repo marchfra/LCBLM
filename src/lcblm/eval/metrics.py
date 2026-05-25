@@ -10,7 +10,7 @@ from torch import Tensor
 
 def alive_dict_size(
     latent_activations: Tensor,
-    threshold: float = 0.01,
+    threshold: float = 0.001,
 ) -> int:
     """Count latent dimensions that fire on at least threshold x N samples."""
     n = latent_activations.shape[0]

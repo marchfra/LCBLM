@@ -580,6 +580,16 @@ def train_vq_vae(  # noqa: PLR0915
         # Per-sample L0 is 1 by construction for hard VQ.
         result.train_l0.append(1.0)
 
+        if cfg.reset_dead_codes:
+            dead = [c for c in range(model.num_codes) if c not in t_codes_used]
+            if dead:
+                sample = next(iter(train_loader)).to(cfg.device)
+                with torch.no_grad():
+                    z_e = model.encode(sample)
+                    perm = torch.randperm(z_e.shape[0], device=cfg.device)
+                    for i, code_idx in enumerate(dead):
+                        model.codebook.data[code_idx] = z_e[perm[i % perm.shape[0]]]
+
         model.eval()
         val_terms: dict[str, float] = {
             "total": 0.0,
@@ -672,19 +682,24 @@ def train_beta_vae(  # noqa: PLR0915
     best_state: dict | None = None
 
     for epoch in trange(cfg.epochs, desc="β-VAE", unit="epoch"):
+        beta_eff = (
+            cfg.beta * min(1.0, (epoch + 1) / cfg.kl_warmup_epochs)
+            if cfg.kl_warmup_epochs > 0
+            else cfg.beta
+        )
         model.train()
         epoch_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
         t_l0 = t_count = 0.0
         for batch in typed_dataloader(train_loader):
             tokens = batch.to(cfg.device)
             out = model(tokens)
-            loss_out = compute_beta_vae_loss(target=tokens, out=out, beta=cfg.beta)
+            loss_out = compute_beta_vae_loss(target=tokens, out=out, beta=beta_eff)
             optimizer.zero_grad()
             loss_out.total_loss.backward()
             optimizer.step()
             epoch_terms["total"] += loss_out.total_loss.item()
             epoch_terms["recon"] += loss_out.recon_loss.item()
-            epoch_terms["kl"] += cfg.beta * loss_out.kl_loss.item()
+            epoch_terms["kl"] += beta_eff * loss_out.kl_loss.item()
             with torch.no_grad():
                 active = (out.mu.abs() > cfg.l0_threshold).float()
                 t_l0 += active.sum(dim=1).sum().item()
@@ -704,11 +719,11 @@ def train_beta_vae(  # noqa: PLR0915
                 loss_out = compute_beta_vae_loss(
                     target=tokens,
                     out=out,
-                    beta=cfg.beta,
+                    beta=beta_eff,
                 )
                 val_terms["total"] += loss_out.total_loss.item()
                 val_terms["recon"] += loss_out.recon_loss.item()
-                val_terms["kl"] += cfg.beta * loss_out.kl_loss.item()
+                val_terms["kl"] += beta_eff * loss_out.kl_loss.item()
                 active = (out.mu.abs() > cfg.l0_threshold).float()
                 v_l0 += active.sum(dim=1).sum().item()
                 v_count += out.mu.shape[0]

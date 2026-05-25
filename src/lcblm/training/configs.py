@@ -93,6 +93,7 @@ class VQVAEConfig(_BaseConfig):
     num_codes: int
     embedding_dim: int = 64
     commitment_weight: float = 0.25
+    reset_dead_codes: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -104,6 +105,8 @@ class BetaVAEConfig(_BaseConfig):
     # Threshold on |μ| for reporting how many latent dimensions are "active"
     # per sample. Disentanglement-literature convention; used for L0 reporting.
     l0_threshold: float = 0.5
+    # Linearly ramp β from 0 to beta over this many epochs (0 = disabled).
+    kl_warmup_epochs: int = 0
 
 
 @dataclass(frozen=True)

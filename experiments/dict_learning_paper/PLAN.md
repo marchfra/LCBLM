@@ -72,7 +72,7 @@ If these five are acknowledged, the workshop paper is achievable in 4 weeks with
 | 2 | **Per-sample L0** | Fewer active concepts per sample | All 4 | Already in `RunResult.best_l0` |
 | 3 | **Total alive dictionary size** (concepts firing on ≥1% of validation samples) | Fewer total latent dims — **strongest claim** | All 4 | New field in `RunResult`; computed at end-of-training pass |
 | 4 | **Class purity** (per-concept label entropy of top-K activating samples) | Quantitative concept interpretability | MNIST, Fashion-MNIST | New: `eval/metrics.py:class_purity` |
-| 5 | **MIG** (Mutual Information Gap vs the 5 ground-truth factors) — *correlational* | Disentanglement (activations correlate with factors) | dSprites | New: `eval/disentanglement.py:mig` — single metric, no DCI/FactorVAE/SAP |
+| 5 | **MIG** (Mutual Information Gap vs the 5 ground-truth factors) — *correlational* | Disentanglement (activations correlate with factors) | dSprites | New: `eval/disentanglement.py:mig` — single metric, no DCI/FactorVAE/SAP. Standard direction: for each factor, find the latent with highest MI (gap = top1 − top2, normalised by H(factor)). **Supplementary:** also compute inverted MIG (for each alive latent, find the factor it captures — gap normalised by H(factor_top1)); if VAEE's alive latents each map cleanly to one factor, this tells the "efficient dictionary" story. Report inverted MIG only if the numbers support it. |
 | 6 | **Intervention consistency in ResNet feature space** (mean cosine similarity of gate-flip directions across N=256 validation inputs, in frozen ResNet-50 features) | Controlled sampling / interpretable intervention | All 3 image datasets | New: `eval/intervention.py:consistency_resnet` |
 | 7 | **Intervention-based factor recovery (dSprites)** — *causal* counterpart to MIG. For each concept g and each factor f ∈ {shape, scale, rotation, x, y}, intervene on g across N inputs, decode, and measure the induced change in f (via direct pixel comparison or a small pretrained factor regressor on dSprites). Report: per-concept dominant factor + dominance ratio (how much the strongest factor changes vs others). Companion *qualitative* artifact: a grid showing intervention before/after with the corresponding factor annotated. **Doubles as an in-distribution-preservation check**: if interventions take the recon OOD, the factor regressor reads noise and dominance ratios collapse — high scores on this metric inherently certify that the model's interventions stay on the data manifold. | Causal feature recovery + in-distribution preservation (a single metric covers both) | dSprites | New: `eval/intervention.py:factor_recovery_dsprites` |
 
@@ -104,13 +104,11 @@ src/lcblm/
     synthetic.py                   # configurable sparse-feature generator
     image_loaders.py               # MNIST / Fashion-MNIST / dSprites — flatten to raw-pixel tensors
   eval/                            # NEW — only what's needed for the 7 headline metrics + 2 sanity checks
-    metrics.py                     # alive_dict_size, r2, class_purity, feature_recovery (sanity)
-    disentanglement.py             # MIG only
+    metrics.py                     # alive_dict_size, class_purity, feature_recovery (sanity)
+    disentanglement.py             # mig(latent_activations, factors) → float; also inverted_mig
     intervention.py                # consistency_resnet (metric 6), factor_recovery_dsprites (metric 7)
     resnet_eval.py                 # frozen ResNet-50 feature extractor used *only* by intervention.py
     dsprites_factors.py            # small factor regressor for dSprites, trained once from ground-truth labels
-    image_runner.py                # image-domain eval harness
-    synthetic_runner.py            # synthetic feature-recovery sanity check
   training/
     configs.py                     # add VQVAEConfig, BetaVAEConfig, ImageDatasetConfig
     loops.py                       # add train_vq_vae, train_beta_vae; extend RunResult
@@ -124,6 +122,29 @@ experiments/
       dsprites_*.toml
     run_all.sh                     # reproducibility entry point
     figures/                       # generated plots
+
+# ct-eval: single post-training evaluation script
+# Usage: ct-eval --run-dir <outputs/...> --dataset <synthetic|mnist|fmnist|dsprites>
+#                [--data-path <path>]   # for dSprites npz or image root
+#                [--labels]             # pass for MNIST/FashionMNIST (enables class purity)
+#                [--device cpu]
+#
+# Outputs a single eval_results.json in the run dir with ALL metrics:
+#
+#   From RunResult (already collected during training):
+#     best_val_recon, best_l0, alive_dict_size
+#
+#   Computed post-training over the val set:
+#     class_purity          (MNIST, FashionMNIST only — requires labels)
+#     feature_recovery      (synthetic only — requires ground-truth features matrix)
+#     mig                   (dSprites only)
+#     inverted_mig          (dSprites only — supplementary)
+#     intervention_consistency_resnet   (all image datasets)
+#     factor_recovery       (dSprites only)
+#
+# All post-training metrics load the best checkpoint, run the val set through the
+# model once (no gradients), and use the resulting latent activations. The script
+# detects which metrics are applicable from the dataset name and available files.
 ```
 
 **Reused existing code (do not duplicate):**
@@ -131,6 +152,7 @@ experiments/
 - `src/lcblm/training/loops.py:RunResult` — add fields rather than introducing a new schema
 - `ct-plot` (`src/lcblm/scripts/plot.py`) — extend with VQ-VAE/β-VAE colors; the L0-MSE scatter is the paper's headline figure
 - `ct-cd` (`src/lcblm/scripts/build_cd.py`) — extend `ModelAdapter` for VQ-VAE/β-VAE; add an image-domain rendering mode (top-K activating images per concept, instead of top-K tokens)
+- `ct-eval` (`experiments/dict_learning_paper/eval.py`) — **single post-training eval script**; loads a run dir, reports all metrics (training + post-training) into `eval_results.json`. Detects applicable metrics from dataset name.
 - `src/lcblm/vaee/models.py` — VAEE core untouched; input is just flattened pixels for image datasets
 - **`extract-emb` is unused in v1** — no text data this round
 - **No encoder/decoder modules** — VAEE/SAE/VQ-VAE/β-VAE all consume flattened pixels directly

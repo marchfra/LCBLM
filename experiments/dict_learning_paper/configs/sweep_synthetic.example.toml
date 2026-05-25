@@ -1,6 +1,7 @@
 # Dict-learning Pareto sweep — synthetic dataset
 #
 # Usage:
+#   cp sweep_synthetic.example.toml sweep_synthetic.toml
 #   python experiments/dict_learning_paper/sweep.py \
 #       --config experiments/dict_learning_paper/configs/sweep_synthetic.toml \
 #       --device cuda
@@ -17,11 +18,12 @@ batch_size             = 512
 early_stopping_patience = 5
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
+# pi = target_l0 / num_embeddings → [4/64, 8/64, 16/64] matches TopK k=[4,8,16]
 [vaee]
 num_embeddings  = 64
 embedding_size  = 16
 sparsity_param  = "pi"
-sparsity_values = [0.02, 0.05, 0.10]
+sparsity_values = [0.0625, 0.125, 0.25]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
 [topk_sae]
@@ -32,15 +34,19 @@ sparsity_values = [4, 8, 16]
 [sae_concept]
 vaee_num_embeddings = 64
 sparsity_param      = "lambda_l1"
-sparsity_values     = [0.01, 0.05, 0.10]
+sparsity_values     = [1.0, 5.0, 10.0]
 
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────
+# Higher patience because dead-code resets cause val loss to fluctuate early on.
 [vq_vae]
-sparsity_param  = "num_codes"
-sparsity_values = [64, 128, 256]
+sparsity_param          = "num_codes"
+sparsity_values         = [64, 128, 256]
+early_stopping_patience = 20
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
+# KL warmup prevents posterior collapse; lower β range keeps reconstruction usable.
 [beta_vae]
-latent_dim      = 64
-sparsity_param  = "beta"
-sparsity_values = [1.0, 4.0, 8.0]
+latent_dim       = 64
+sparsity_param   = "beta"
+sparsity_values  = [1.0, 2.0, 4.0]
+kl_warmup_epochs = 10
