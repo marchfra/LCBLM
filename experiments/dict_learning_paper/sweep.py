@@ -2,8 +2,7 @@
 
 Usage:
     python experiments/dict_learning_paper/sweep.py \\
-        --dataset synthetic \\
-        --output-dir experiments/dict_learning_paper/outputs \\
+        --config experiments/dict_learning_paper/configs/sweep_synthetic.toml \\
         --device cuda
 """
 
@@ -12,12 +11,17 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import sys
 import warnings
 from pathlib import Path
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib  # type: ignore[no-redef]
+
 import torch
 
-from lcblm.data.image_loaders import load_dsprites, load_fmnist, load_mnist
 from lcblm.data.synthetic import make_synthetic
 from lcblm.training.configs import (
     BetaVAEConfig,
@@ -36,18 +40,6 @@ from lcblm.training.loops import (
 )
 from lcblm.utils.data import FlatTensorDataset
 
-# ── Sparsity grid ─────────────────────────────────────────────────────────────
-
-_GRID: dict[str, list[tuple[str, float | int]]] = {
-    "vaee":        [("pi", v) for v in [0.02, 0.05, 0.10]],
-    "topk_sae":    [("k", v) for v in [4, 8, 16]],
-    "sae_concept": [("lambda_l1", v) for v in [0.01, 0.05, 0.10]],
-    "vq_vae":      [("num_codes", v) for v in [64, 128, 256]],
-    "beta_vae":    [("beta", v) for v in [1.0, 4.0, 8.0]],
-}
-
-_FIXED = dict(epochs=50, lr=1e-3, batch_size=512, early_stopping_patience=5)
-
 # ── Dataset loaders ───────────────────────────────────────────────────────────
 
 
@@ -61,6 +53,7 @@ def _load_datasets(
         n = len(full)
         cut = int(0.8 * n)
         return FlatTensorDataset(full.data[:cut]), FlatTensorDataset(full.data[cut:])
+    from lcblm.data.image_loaders import load_dsprites, load_fmnist, load_mnist
     if dataset == "mnist":
         assert data_path, "--data-path required for mnist"
         return load_mnist(data_path, "train"), load_mnist(data_path, "val")
@@ -83,17 +76,19 @@ def _run_one(
     model_name: str,
     sparsity_key: str,
     sparsity_val: float | int,
+    model_cfg: dict,
+    fixed: dict,
     train_ds: FlatTensorDataset,
     val_ds: FlatTensorDataset,
     device: torch.device,
 ) -> RunResult:
-    common = dict(**_FIXED, device=device)
+    common = dict(**fixed, device=device)
 
     if model_name == "vaee":
         cfg = VAEEConfig(
             **common,
-            num_embeddings=64,
-            embedding_size=16,
+            num_embeddings=model_cfg["num_embeddings"],
+            embedding_size=model_cfg["embedding_size"],
             pi=float(sparsity_val),
         )
         with warnings.catch_warnings():
@@ -107,7 +102,7 @@ def _run_one(
     elif model_name == "sae_concept":
         cfg = SAEConceptConfig(
             **common,
-            vaee_num_embeddings=64,
+            vaee_num_embeddings=model_cfg["vaee_num_embeddings"],
             lambda_l1=float(sparsity_val),
         )
         _, result = train_sae_concept(train_ds, val_ds, cfg)
@@ -117,7 +112,11 @@ def _run_one(
         _, result = train_vq_vae(train_ds, val_ds, cfg)
 
     elif model_name == "beta_vae":
-        cfg = BetaVAEConfig(**common, latent_dim=64, beta=float(sparsity_val))
+        cfg = BetaVAEConfig(
+            **common,
+            latent_dim=model_cfg["latent_dim"],
+            beta=float(sparsity_val),
+        )
         _, result = train_beta_vae(train_ds, val_ds, cfg)
 
     else:
@@ -129,35 +128,47 @@ def _run_one(
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+_MODEL_NAMES = ("vaee", "topk_sae", "sae_concept", "vq_vae", "beta_vae")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dict-learning Pareto sweep.")
-    parser.add_argument(
-        "--dataset",
-        required=True,
-        choices=["synthetic", "mnist", "fmnist", "dsprites"],
-    )
-    parser.add_argument("--data-path", default=None)
-    parser.add_argument(
-        "--output-dir",
-        default="experiments/dict_learning_paper/outputs",
-    )
+    parser.add_argument("--config", required=True, help="Path to sweep TOML config.")
     parser.add_argument("--device", default=None)
     args = parser.parse_args()
+
+    with open(args.config, "rb") as fh:
+        cfg = tomllib.load(fh)
+
+    dataset: str = cfg["dataset"]
+    output_dir: str = cfg.get("output_dir", "experiments/dict_learning_paper/outputs")
+    data_path: str | None = cfg.get("data_path")
+
+    fixed = {
+        "epochs": cfg["epochs"],
+        "lr": cfg["lr"],
+        "batch_size": cfg["batch_size"],
+        "early_stopping_patience": cfg["early_stopping_patience"],
+    }
 
     device = torch.device(args.device) if args.device else (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     )
 
-    train_ds, val_ds = _load_datasets(args.dataset, args.data_path, device)
+    train_ds, val_ds = _load_datasets(dataset, data_path, device)
 
-    out_root = Path(args.output_dir) / args.dataset
+    out_root = Path(output_dir) / dataset
     out_root.mkdir(parents=True, exist_ok=True)
 
-    for model_name, sparsity_points in _GRID.items():
-        for sparsity_key, sparsity_val in sparsity_points:
+    for model_name in _MODEL_NAMES:
+        model_cfg: dict = cfg.get(model_name, {})
+        sparsity_param: str = model_cfg["sparsity_param"]
+        sparsity_values: list = model_cfg["sparsity_values"]
+
+        for sparsity_val in sparsity_values:
             result = _run_one(
-                model_name, sparsity_key, sparsity_val, train_ds, val_ds, device
+                model_name, sparsity_param, sparsity_val,
+                model_cfg, fixed, train_ds, val_ds, device,
             )
 
             out_path = out_root / f"{model_name}_{sparsity_val}.json"
@@ -165,7 +176,7 @@ def main() -> None:
                 json.dump(dataclasses.asdict(result), fh, indent=2)
 
             print(
-                f"[{model_name}/{sparsity_key}={sparsity_val}]"
+                f"[{model_name}/{sparsity_param}={sparsity_val}]"
                 f" alive={result.alive_dict_size}"
                 f" l0={result.best_l0:.2f}"
                 f" mse={result.best_val_recon:.4f}"

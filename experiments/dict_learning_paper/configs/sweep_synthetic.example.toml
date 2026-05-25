@@ -1,0 +1,46 @@
+# Dict-learning Pareto sweep — synthetic dataset
+#
+# Usage:
+#   python experiments/dict_learning_paper/sweep.py \
+#       --config experiments/dict_learning_paper/configs/sweep_synthetic.toml \
+#       --device cuda
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset    = "synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+# data_path is not needed for synthetic
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs                 = 50
+lr                     = 1e-3
+batch_size             = 512
+early_stopping_patience = 5
+
+# ── VAEE ──────────────────────────────────────────────────────────────────────
+[vaee]
+num_embeddings  = 64
+embedding_size  = 16
+sparsity_param  = "pi"
+sparsity_values = [0.02, 0.05, 0.10]
+
+# ── TopK-SAE ──────────────────────────────────────────────────────────────────
+[topk_sae]
+sparsity_param  = "k"
+sparsity_values = [4, 8, 16]
+
+# ── L1-SAE ────────────────────────────────────────────────────────────────────
+[sae_concept]
+vaee_num_embeddings = 64
+sparsity_param      = "lambda_l1"
+sparsity_values     = [0.01, 0.05, 0.10]
+
+# ── VQ-VAE ────────────────────────────────────────────────────────────────────
+[vq_vae]
+sparsity_param  = "num_codes"
+sparsity_values = [64, 128, 256]
+
+# ── β-VAE ─────────────────────────────────────────────────────────────────────
+[beta_vae]
+latent_dim      = 64
+sparsity_param  = "beta"
+sparsity_values = [1.0, 4.0, 8.0]
