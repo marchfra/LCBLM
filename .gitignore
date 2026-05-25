@@ -194,7 +194,7 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
 
 ### Python Patch ###
 # Poetry local configuration file - https://python-poetry.org/docs/configuration/#local-configuration
@@ -238,9 +238,6 @@ experiment_outputs/
 
 /sst2_mistral_embeddings
 
-# Local experiment configs (copy from *.example.toml to create your own)
-experiments/**/*.toml
-!experiments/**/*.example.toml
 /wandb
 /experiments/vaee_vs_sae/wanbd_outputs
 /experiments/vaee_vs_sae/lenovo_outputs
@@ -248,3 +245,23 @@ experiments/**/*.toml
 /experiments/interpretability/outputs
 
 outputs/
+sanity_outputs/
+sweep_outputs/
+
+# Datasets
+data/
+
+# Soft-retired experiments
+experiments/vaee_mnist/
+experiments/embae_comparison/
+
+# Claude Code per-user state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# LaTeX intermediates
+*.aux
+
+# Paper build artifacts
+probabilistic_formulation*.pdf
