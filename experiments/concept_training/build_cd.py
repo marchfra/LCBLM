@@ -95,7 +95,7 @@ def load_adapter(ckpt_path: Path) -> ModelAdapter:
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915
     parser = argparse.ArgumentParser(
         prog="ct-cd",
         description="Build an HTML concept dictionary from a trained checkpoint.",
@@ -146,6 +146,13 @@ def main() -> None:
         "--tokenizer",
         default="mistralai/Mistral-7B-v0.1",
         help="HuggingFace tokenizer name or path (default: mistralai/Mistral-7B-v0.1).",
+    )
+    parser.add_argument(
+        "--non-unique",
+        action="store_true",
+        default=False,
+        help="Show every occurrence of a token instead of only the highest-activating "
+        "instance per token type (default: unique tokens only).",
     )
     parser.add_argument(
         "--out",
@@ -251,6 +258,7 @@ def main() -> None:
         word_token_ids=word_token_ids_arr,
         word_sentence_indices=word_sentence_indices,
         word_positions=word_positions,
+        unique_tokens=not args.non_unique,
     )
 
 
