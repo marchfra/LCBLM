@@ -262,6 +262,3 @@ experiments/embae_comparison/
 
 # LaTeX intermediates
 *.aux
-
-# Paper build artifacts
-probabilistic_formulation*.pdf
