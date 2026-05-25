@@ -246,3 +246,5 @@ experiments/**/*.toml
 /experiments/vaee_vs_sae/lenovo_outputs
 /src/lcblm/scripts
 /experiments/interpretability/outputs
+
+outputs/
