@@ -47,9 +47,10 @@ def _load_datasets(
     dataset: str,
     data_path: str | None,
     device: torch.device,
+    synthetic_cfg: dict | None = None,
 ) -> tuple[FlatTensorDataset, FlatTensorDataset]:
     if dataset == "synthetic":
-        full, _ = make_synthetic()
+        full, _ = make_synthetic(**(synthetic_cfg or {}))
         n = len(full)
         cut = int(0.8 * n)
         return FlatTensorDataset(full.data[:cut]), FlatTensorDataset(full.data[cut:])
@@ -160,7 +161,8 @@ def main() -> None:
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     )
 
-    train_ds, val_ds = _load_datasets(dataset, data_path, device)
+    synthetic_cfg = cfg.get("synthetic")
+    train_ds, val_ds = _load_datasets(dataset, data_path, device, synthetic_cfg)
 
     out_root = Path(output_dir) / dataset
     out_root.mkdir(parents=True, exist_ok=True)
