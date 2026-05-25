@@ -2,7 +2,6 @@
 # Full 256-dim sparse-superposition benchmark with ±1 coefficients.
 #
 # Usage:
-#   cp sweep_synthetic_hard.example.toml sweep_synthetic_hard.toml
 #   python experiments/dict_learning_paper/sweep.py \
 #       --config experiments/dict_learning_paper/configs/sweep_synthetic_hard.toml \
 #       --device cuda
