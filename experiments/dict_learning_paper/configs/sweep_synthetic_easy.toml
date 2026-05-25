@@ -1,0 +1,63 @@
+# Dict-learning sanity check — synthetic (easy) dataset
+# 2D, 8 atoms on unit circle, k=1 active per sample, binary coefficients {0,+1}.
+# Distinct cluster modes: 8 (= n_features × {+1}).
+# Hyperparameters exactly match ground truth (no overcompleteness).
+#
+# Usage:
+#   python experiments/dict_learning_paper/sweep.py \
+#       --config experiments/dict_learning_paper/configs/sweep_synthetic_easy.toml \
+#       --device cuda
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset    = "synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+
+[synthetic]
+n_samples    = 1000
+n_features   = 8
+n_active     = 1
+input_dim    = 2
+noise_std    = 0.05
+binary_coefs = true
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs                  = 50
+lr                      = 1e-3
+batch_size              = 128
+early_stopping_patience = 5
+
+# ── VAEE ──────────────────────────────────────────────────────────────────────
+# num_embeddings = n_features = 8; pi = n_active / num_embeddings = 1/8.
+# target_l0 = 1 will trigger a "below 2" warning (expected, caught & ignored).
+[vaee]
+num_embeddings  = 8
+embedding_size  = 4
+sparsity_param  = "pi"
+sparsity_values = [0.125]
+
+# ── TopK-SAE ──────────────────────────────────────────────────────────────────
+[topk_sae]
+latent_dim      = 8
+sparsity_param  = "k"
+sparsity_values = [1]
+
+# ── L1-SAE ────────────────────────────────────────────────────────────────────
+[sae_concept]
+vaee_num_embeddings = 8
+sparsity_param      = "lambda_l1"
+sparsity_values     = [0.1]
+
+# ── VQ-VAE ────────────────────────────────────────────────────────────────────
+# num_codes = number of distinct modes (8); each code memorises one mode.
+[vq_vae]
+sparsity_param          = "num_codes"
+sparsity_values         = [8]
+embedding_dim           = 4
+early_stopping_patience = 20
+
+# ── β-VAE ─────────────────────────────────────────────────────────────────────
+[beta_vae]
+latent_dim       = 8
+sparsity_param   = "beta"
+sparsity_values  = [1.0]
+kl_warmup_epochs = 10
