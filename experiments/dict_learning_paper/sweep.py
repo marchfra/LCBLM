@@ -87,7 +87,7 @@ def _run_one(
     device: torch.device,
 ) -> RunResult:
     overrides = {k: v for k, v in model_cfg.items() if k in _SHARED_KEYS}
-    common = dict(**fixed, **overrides, device=device)
+    common = {**fixed, **overrides, "device": device}
 
     if model_name == "vaee":
         cfg = VAEEConfig(
@@ -101,7 +101,12 @@ def _run_one(
             _, result = train_vaee(train_ds, val_ds, cfg)
 
     elif model_name == "topk_sae":
-        cfg = TopKSAEConfig(**common, k=int(sparsity_val))
+        topk_extras = {
+            key: model_cfg[key]
+            for key in ("latent_dim", "k_aux")
+            if key in model_cfg
+        }
+        cfg = TopKSAEConfig(**common, k=int(sparsity_val), **topk_extras)
         _, result = train_topk_sae(train_ds, val_ds, cfg)
 
     elif model_name == "sae_concept":
@@ -113,7 +118,12 @@ def _run_one(
         _, result = train_sae_concept(train_ds, val_ds, cfg)
 
     elif model_name == "vq_vae":
-        cfg = VQVAEConfig(**common, num_codes=int(sparsity_val))
+        vq_extras = {
+            key: model_cfg[key]
+            for key in ("embedding_dim",)
+            if key in model_cfg
+        }
+        cfg = VQVAEConfig(**common, num_codes=int(sparsity_val), **vq_extras)
         _, result = train_vq_vae(train_ds, val_ds, cfg)
 
     elif model_name == "beta_vae":

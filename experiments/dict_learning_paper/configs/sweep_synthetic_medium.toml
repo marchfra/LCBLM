@@ -12,6 +12,13 @@
 dataset    = "synthetic"
 output_dir = "experiments/dict_learning_paper/outputs"
 
+# ── Shared training settings ──────────────────────────────────────────────────
+# (must come before any [section] — TOML scopes subsequent keys into the section)
+epochs                  = 50
+lr                      = 1e-3
+batch_size              = 128
+early_stopping_patience = 5
+
 [synthetic]
 n_samples    = 1000
 n_features   = 5
@@ -19,12 +26,6 @@ n_active     = 2
 input_dim    = 2
 noise_std    = 0.05
 binary_coefs = true
-
-# ── Shared training settings ──────────────────────────────────────────────────
-epochs                  = 50
-lr                      = 1e-3
-batch_size              = 128
-early_stopping_patience = 5
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
 # num_embeddings = n_features = 5; pi = n_active / num_embeddings = 2/5.
@@ -36,8 +37,11 @@ sparsity_param  = "pi"
 sparsity_values = [0.4]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
+# k_aux ≤ latent_dim is required; setting k_aux = latent_dim is the safest choice
+# for tiny latents (default 512 would crash).
 [topk_sae]
 latent_dim      = 5
+k_aux           = 5
 sparsity_param  = "k"
 sparsity_values = [2]
 
