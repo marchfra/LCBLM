@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-import torch  # noqa: TC002
-from torch import nn  # noqa: TC002
+from typing import TYPE_CHECKING
 
-from lcblm.baselines import BetaVAE, VQVAE
+from lcblm.baselines import VQVAE, BetaVAE
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.dataset import compute_tied_bias
-from lcblm.training.configs import (
-    BetaVAEConfig,
-    SAEParamConfig,
-    TopKSAEConfig,
-    VAEEConfig,
-    VQVAEConfig,
-)
-from lcblm.utils.data import FlatTensorDataset  # noqa: TC001
+from lcblm.training.configs import TopKSAEConfig
 from lcblm.vaee.models import VAEE
+
+if TYPE_CHECKING:
+    import torch
+    from torch import nn
+
+    from lcblm.training.configs import (
+        BetaVAEConfig,
+        SAEParamConfig,
+        VAEEConfig,
+        VQVAEConfig,
+    )
+    from lcblm.utils.data import FlatTensorDataset
 
 
 def build_vaee(input_dim: int, cfg: VAEEConfig) -> VAEE:

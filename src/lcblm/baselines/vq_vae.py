@@ -78,13 +78,13 @@ class VQVAE(nn.Module):
 
         """
         # ||z_e - c||^2 = ||z_e||^2 - 2 z_e.c + ||c||^2
-        z_sq = (z_e**2).sum(dim=-1, keepdim=True)         # (B, 1)
-        c_sq = (self.codebook**2).sum(dim=-1)             # (K,)
-        cross = z_e @ self.codebook.T                     # (B, K)
-        dists = z_sq - 2 * cross + c_sq.unsqueeze(0)      # (B, K)
+        z_sq = torch.linalg.vector_norm(z_e, dim=-1, keepdim=True) ** 2  # (B, 1)
+        c_sq = torch.linalg.vector_norm(self.codebook, dim=-1) ** 2  # (K,)
+        cross = z_e @ self.codebook.T  # (B, K)
+        dists = z_sq - 2 * cross + c_sq.unsqueeze(0)  # (B, K)
 
-        indices = dists.argmin(dim=-1)                    # (B,)
-        z_q = self.codebook[indices]                      # (B, embedding_dim)
+        indices = dists.argmin(dim=-1)  # (B,)
+        z_q = self.codebook[indices]  # (B, embedding_dim)
         return indices, z_q
 
     def forward(self, x: Tensor) -> Output:

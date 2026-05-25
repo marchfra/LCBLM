@@ -279,20 +279,23 @@ def _build_token_grid(  # noqa: PLR0913
     top_k: int,
     max_concepts: int | None,
     context_size: int,
+    *,
+    unique_tokens: bool = True,
 ) -> str:
     concept_total = alpha.sum(axis=0)
     top_concept_idxs = np.argsort(concept_total)[::-1][:max_concepts]
 
-    unique_ids, inverse = np.unique(token_ids, return_inverse=True)
-    n_types = len(unique_ids)
-    best_occ = np.full((n_types, num_concepts), -1, dtype=np.int64)
-    best_val = np.full((n_types, num_concepts), -np.inf, dtype=np.float32)
-    for flat_idx in range(len(token_ids)):
-        type_idx = inverse[flat_idx]
-        vals = alpha[flat_idx]
-        improved = vals > best_val[type_idx]
-        best_val[type_idx, improved] = vals[improved]
-        best_occ[type_idx, improved] = flat_idx
+    if unique_tokens:
+        unique_ids, inverse = np.unique(token_ids, return_inverse=True)
+        n_types = len(unique_ids)
+        best_occ = np.full((n_types, num_concepts), -1, dtype=np.int64)
+        best_val = np.full((n_types, num_concepts), -np.inf, dtype=np.float32)
+        for flat_idx in range(len(token_ids)):
+            type_idx = inverse[flat_idx]
+            vals = alpha[flat_idx]
+            improved = vals > best_val[type_idx]
+            best_val[type_idx, improved] = vals[improved]
+            best_occ[type_idx, improved] = flat_idx
 
     parts: list[str] = ['<div class="grid">']
 
@@ -301,13 +304,17 @@ def _build_token_grid(  # noqa: PLR0913
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
         col_max = float(col_alpha.max()) or 1.0
-        scores = best_val[:, concept_idx]
 
-        valid_idxs = np.where(np.isfinite(scores))[0]
-        if len(valid_idxs) == 0:
-            top_type_idxs: np.ndarray = np.array([], dtype=np.int64)
+        if unique_tokens:
+            scores = best_val[:, concept_idx]
+            valid_idxs = np.where(np.isfinite(scores))[0]
+            top_entries: np.ndarray = (
+                np.array([], dtype=np.int64)
+                if len(valid_idxs) == 0
+                else valid_idxs[np.argsort(scores[valid_idxs])[::-1][:top_k]]
+            )
         else:
-            top_type_idxs = valid_idxs[np.argsort(scores[valid_idxs])[::-1][:top_k]]
+            top_entries = np.argsort(col_alpha)[::-1][:top_k]
 
         parts.append('<div class="col">')
         parts.append(
@@ -315,9 +322,13 @@ def _build_token_grid(  # noqa: PLR0913
             f"<br>L0: {l0_freq:.1%} | ā: {mean_alpha:.2f}</div>",
         )
 
-        for type_idx in top_type_idxs:
-            score = float(scores[type_idx])
-            flat_idx = int(best_occ[type_idx, concept_idx])
+        for entry_idx in top_entries:
+            if unique_tokens:
+                score = float(scores[entry_idx])
+                flat_idx = int(best_occ[entry_idx, concept_idx])
+            else:
+                flat_idx = int(entry_idx)
+                score = float(col_alpha[flat_idx])
             sent_idx = int(sentence_indices[flat_idx])
             pos = int(positions[flat_idx])
 
@@ -546,20 +557,23 @@ def _build_word_grid(  # noqa: PLR0913
     top_k: int,
     max_concepts: int | None,
     context_size: int,
+    *,
+    unique_tokens: bool = True,
 ) -> str:
     concept_total = word_alpha.sum(axis=0)
     top_concept_idxs = np.argsort(concept_total)[::-1][:max_concepts]
 
-    unique_ids, inverse = np.unique(word_token_ids, return_inverse=True)
-    n_types = len(unique_ids)
-    best_occ = np.full((n_types, num_concepts), -1, dtype=np.int64)
-    best_val = np.full((n_types, num_concepts), -np.inf, dtype=np.float32)
-    for flat_idx in range(len(word_token_ids)):
-        type_idx = inverse[flat_idx]
-        vals = word_alpha[flat_idx]
-        improved = vals > best_val[type_idx]
-        best_val[type_idx, improved] = vals[improved]
-        best_occ[type_idx, improved] = flat_idx
+    if unique_tokens:
+        unique_ids, inverse = np.unique(word_token_ids, return_inverse=True)
+        n_types = len(unique_ids)
+        best_occ = np.full((n_types, num_concepts), -1, dtype=np.int64)
+        best_val = np.full((n_types, num_concepts), -np.inf, dtype=np.float32)
+        for flat_idx in range(len(word_token_ids)):
+            type_idx = inverse[flat_idx]
+            vals = word_alpha[flat_idx]
+            improved = vals > best_val[type_idx]
+            best_val[type_idx, improved] = vals[improved]
+            best_occ[type_idx, improved] = flat_idx
 
     parts: list[str] = ['<div class="grid">']
 
@@ -568,13 +582,17 @@ def _build_word_grid(  # noqa: PLR0913
         mean_alpha = float(col_alpha.mean())
         l0_freq = float((col_alpha > threshold).mean())
         col_max = float(col_alpha.max()) or 1.0
-        scores = best_val[:, concept_idx]
 
-        valid_idxs = np.where(np.isfinite(scores))[0]
-        if len(valid_idxs) == 0:
-            top_type_idxs: np.ndarray = np.array([], dtype=np.int64)
+        if unique_tokens:
+            scores = best_val[:, concept_idx]
+            valid_idxs = np.where(np.isfinite(scores))[0]
+            top_entries: np.ndarray = (
+                np.array([], dtype=np.int64)
+                if len(valid_idxs) == 0
+                else valid_idxs[np.argsort(scores[valid_idxs])[::-1][:top_k]]
+            )
         else:
-            top_type_idxs = valid_idxs[np.argsort(scores[valid_idxs])[::-1][:top_k]]
+            top_entries = np.argsort(col_alpha)[::-1][:top_k]
 
         parts.append('<div class="col">')
         parts.append(
@@ -582,9 +600,13 @@ def _build_word_grid(  # noqa: PLR0913
             f"<br>L0: {l0_freq:.1%} | ā: {mean_alpha:.2f}</div>",
         )
 
-        for type_idx in top_type_idxs:
-            score = float(scores[type_idx])
-            flat_idx = int(best_occ[type_idx, concept_idx])
+        for entry_idx in top_entries:
+            if unique_tokens:
+                score = float(scores[entry_idx])
+                flat_idx = int(best_occ[entry_idx, concept_idx])
+            else:
+                flat_idx = int(entry_idx)
+                score = float(col_alpha[flat_idx])
             sent_idx = int(word_sentence_indices[flat_idx])
             pos = int(word_positions[flat_idx])
 
@@ -633,6 +655,8 @@ def build_concept_dictionary(  # noqa: PLR0913
     word_token_ids: np.ndarray | None = None,
     word_sentence_indices: np.ndarray | None = None,
     word_positions: np.ndarray | None = None,
+    *,
+    unique_tokens: bool = True,
 ) -> None:
     """Write a self-contained HTML concept dictionary.
 
@@ -662,6 +686,10 @@ def build_concept_dictionary(  # noqa: PLR0913
         word_sentence_indices: Sentence index for each word, shape (N_words,).
         word_positions: Position of the first sub-word token of each word,
             shape (N_words,).
+        unique_tokens: If True (default), each token type appears at most once per
+            concept, showing the occurrence with the highest activation. If False,
+            every occurrence is eligible and the top-k highest-activating instances
+            are shown regardless of repetition.
 
     """
     if out_path is None:
@@ -684,6 +712,7 @@ def build_concept_dictionary(  # noqa: PLR0913
         top_k,
         max_concepts,
         context_size,
+        unique_tokens=unique_tokens,
     )
     sentence_grid = _build_sentence_grid(
         alpha,
@@ -709,6 +738,7 @@ def build_concept_dictionary(  # noqa: PLR0913
             top_k,
             max_concepts,
             context_size,
+            unique_tokens=unique_tokens,
         )
 
     parts: list[str] = [

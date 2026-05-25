@@ -95,7 +95,7 @@ def load_adapter(ckpt_path: Path) -> ModelAdapter:
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915
     parser = argparse.ArgumentParser(
         prog="ct-cd",
         description="Build an HTML concept dictionary from a trained checkpoint.",
@@ -146,6 +146,13 @@ def main() -> None:
         "--tokenizer",
         default="mistralai/Mistral-7B-v0.1",
         help="HuggingFace tokenizer name or path (default: mistralai/Mistral-7B-v0.1).",
+    )
+    parser.add_argument(
+        "--non-unique",
+        action="store_true",
+        default=False,
+        help="Show every occurrence of a token instead of only the highest-activating "
+        "instance per token type (default: unique tokens only).",
     )
     parser.add_argument(
         "--out",
@@ -225,10 +232,11 @@ def main() -> None:
     print(f"Loading tokenizer {args.tokenizer}...")
     tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.tokenizer)  # ty:ignore[invalid-assignment]
 
+    unique_suffix = "non_unique" if args.non_unique else "unique"
     out_path = (
         Path(args.out)
         if args.out
-        else run_dir / f"{ckpt_path.stem}_{args.split}_cd.html"
+        else run_dir / f"{ckpt_path.stem}_{args.split}_cd_{unique_suffix}.html"
     )
     title = f"{ckpt_path.stem} Concept Dictionary — {ds_cfg['name']} {args.split}"
 
@@ -251,6 +259,7 @@ def main() -> None:
         word_token_ids=word_token_ids_arr,
         word_sentence_indices=word_sentence_indices,
         word_positions=word_positions,
+        unique_tokens=not args.non_unique,
     )
 
 
