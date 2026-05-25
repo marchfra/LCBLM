@@ -13,12 +13,14 @@ def make_synthetic(  # noqa: PLR0913
     input_dim: int = 256,
     noise_std: float = 0.1,
     seed: int = 0,
+    binary_coefs: bool = False,
 ) -> tuple[FlatTensorDataset, Tensor]:
     """Sparse superposition benchmark.
 
-    Each sample is a sum of n_active ground-truth feature vectors with random ±1
-    coefficients, plus Gaussian noise.  Returns the dataset and the ground-truth
-    feature matrix (needed for feature_recovery evaluation).
+    Each sample is a sum of n_active ground-truth feature vectors with random
+    coefficients drawn from {-1, +1} (default) or {+1} when binary_coefs=True,
+    plus Gaussian noise.  Returns the dataset and the ground-truth feature
+    matrix (needed for feature_recovery evaluation).
     """
     rng = torch.Generator().manual_seed(seed)
 
@@ -30,9 +32,12 @@ def make_synthetic(  # noqa: PLR0913
     rand_vals = torch.rand(n_samples, n_features, generator=rng)
     indices = rand_vals.argsort(dim=1)[:, :n_active]  # [N, n_active]
 
-    signs = torch.randint(0, 2, (n_samples, n_active), generator=rng).float() * 2 - 1
+    if binary_coefs:
+        coefs = torch.ones(n_samples, n_active)
+    else:
+        coefs = torch.randint(0, 2, (n_samples, n_active), generator=rng).float() * 2 - 1
     selected = features[indices]  # [N, n_active, input_dim]
-    data = (signs.unsqueeze(-1) * selected).sum(dim=1)  # [N, input_dim]
+    data = (coefs.unsqueeze(-1) * selected).sum(dim=1)  # [N, input_dim]
     data = data + torch.randn(n_samples, input_dim, generator=rng) * noise_std
 
     return FlatTensorDataset(data.float()), features
