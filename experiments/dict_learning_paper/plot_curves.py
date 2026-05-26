@@ -11,29 +11,30 @@ import argparse
 import json
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
+import matplotlib as mpl
+
+mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
 _MODEL_DISPLAY = {
-    "vaee":        "VAEE",
-    "topk_sae":    "TopK-SAE",
+    "vaee": "VAEE",
+    "topk_sae": "TopK-SAE",
     "sae_concept": "L1-SAE",
-    "vq_vae":      "VQ-VAE",
-    "beta_vae":    "β-VAE",
+    "vq_vae": "VQ-VAE",
+    "beta_vae": "β-VAE",
 }
 _ORDER = list(_MODEL_DISPLAY)
-_CMAP = plt.cm.viridis
+_CMAP = mpl.colormaps["viridis"]
 
 
 def _load(out_dir: Path) -> dict[str, list[dict]]:
     runs: dict[str, list[dict]] = {m: [] for m in _ORDER}
-    for path in sorted(out_dir.glob("*.json")):
+    for path in sorted(out_dir.glob("*/results.json")):
         data = json.loads(path.read_text())
         model = data["model_name"]
         if model in runs:
-            data["_label"] = path.stem[len(model) + 1:]
+            data["_label"] = path.parent.name[len(model) + 1 :]
             runs[model].append(data)
     return runs
 
@@ -42,7 +43,8 @@ def plot(out_dir: Path) -> None:
     runs = _load(out_dir)
     n_models = len(_ORDER)
     fig, axes = plt.subplots(
-        n_models, 3,
+        n_models,
+        3,
         figsize=(14, 3 * n_models),
         squeeze=False,
         sharex=False,
@@ -54,21 +56,39 @@ def plot(out_dir: Path) -> None:
         model_runs = runs[model_key]
         colors = _CMAP(np.linspace(0.2, 0.9, max(len(model_runs), 1)))
 
-        for run, color in zip(model_runs, colors):
+        for run, color in zip(model_runs, colors, strict=False):
             n_epochs = len(run["val_recon"])
             epochs = range(1, n_epochs + 1)
             label = run["_label"]
 
             best_epoch = int(np.argmin(run["val_recon"])) + 1
 
-            ax_train.plot(epochs, run["train_recon"], color=color, label=label, linewidth=1.5)
+            ax_train.plot(
+                epochs,
+                run["train_recon"],
+                color=color,
+                label=label,
+                linewidth=1.5,
+            )
             ax_train.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
 
-            ax_val.plot(epochs, run["val_recon"], color=color, label=label, linewidth=1.5)
+            ax_val.plot(
+                epochs,
+                run["val_recon"],
+                color=color,
+                label=label,
+                linewidth=1.5,
+            )
             ax_val.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
 
             if run["val_l0"] and run["val_l0"][0] > 0:
-                ax_l0.plot(epochs, run["val_l0"], color=color, label=label, linewidth=1.5)
+                ax_l0.plot(
+                    epochs,
+                    run["val_l0"],
+                    color=color,
+                    label=label,
+                    linewidth=1.5,
+                )
                 ax_l0.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
 
         ax_train.set_title(_MODEL_DISPLAY[model_key], fontsize=11, loc="left")
@@ -94,7 +114,10 @@ def plot(out_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("out_dir", help="Path to a dataset output dir, e.g. outputs/synthetic")
+    parser.add_argument(
+        "out_dir",
+        help="Path to a dataset output dir, e.g. outputs/synthetic",
+    )
     args = parser.parse_args()
     plot(Path(args.out_dir))
 

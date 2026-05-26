@@ -4,64 +4,57 @@
 # Hyperparameters exactly match ground truth (no overcompleteness).
 #
 # Usage:
-#   python experiments/dict_learning_paper/sweep.py \
-#       --config experiments/dict_learning_paper/configs/sweep_synthetic_medium.toml \
-#       --device cuda
+#   dl-sweep --config experiments/dict_learning_paper/configs/sweep_synthetic_medium.toml
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
-dataset    = "synthetic"
+dataset = "synthetic"
 output_dir = "experiments/dict_learning_paper/outputs"
 
 # ── Shared training settings ──────────────────────────────────────────────────
 # (must come before any [section] — TOML scopes subsequent keys into the section)
-epochs                  = 50
-lr                      = 1e-3
-batch_size              = 128
+epochs = 50
+lr = 1e-3
+batch_size = 128
 early_stopping_patience = 5
 
 [synthetic]
-n_samples    = 1000
-n_features   = 5
-n_active     = 2
-input_dim    = 2
-noise_std    = 0.05
+n_samples = 1000
+n_features = 5
+n_active = 2
+input_dim = 2
+noise_std = 0.05
 binary_coefs = true
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
 # num_embeddings = n_features = 5; pi = n_active / num_embeddings = 2/5.
 # target_l0 = 2 sits exactly at the lower-bound warning threshold.
 [vaee]
-num_embeddings  = 5
-embedding_size  = 4
-sparsity_param  = "pi"
-sparsity_values = [0.4]
+num_embeddings = 5
+embedding_size = 4
+pi = [0.4]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
-# k_aux ≤ latent_dim is required; setting k_aux = latent_dim is the safest choice
+# k_aux <= latent_dim is required; setting k_aux = latent_dim is the safest choice
 # for tiny latents (default 512 would crash).
 [topk_sae]
-latent_dim      = 5
-k_aux           = 5
-sparsity_param  = "k"
-sparsity_values = [2]
+latent_dim = 5
+k_aux = 5
+k = [2]
 
 # ── L1-SAE ────────────────────────────────────────────────────────────────────
 [sae_concept]
 vaee_num_embeddings = 5
-sparsity_param      = "lambda_l1"
-sparsity_values     = [0.1]
+lambda_l1 = [0.1]
 
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────
 # num_codes = number of distinct modes (10); each code memorises one mode.
 [vq_vae]
-sparsity_param          = "num_codes"
-sparsity_values         = [10]
-embedding_dim           = 4
+embedding_dim = 4
 early_stopping_patience = 20
+num_codes = [10]
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
 [beta_vae]
-latent_dim       = 5
-sparsity_param   = "beta"
-sparsity_values  = [1.0]
+latent_dim = 5
 kl_warmup_epochs = 10
+beta = [1.0]

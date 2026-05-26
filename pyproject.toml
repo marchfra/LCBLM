@@ -35,6 +35,7 @@ dependencies = [
 ct-train = "experiments.concept_training.train:main"
 ct-cd = "experiments.concept_training.build_cd:main"
 ct-plot = "experiments.concept_training.plot:main"
+dl-sweep = "experiments.dict_learning_paper.run_sweep:main"
 extract-emb = "lcblm.extract_embeddings:main"
 
 [dependency-groups]
