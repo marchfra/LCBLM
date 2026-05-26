@@ -57,7 +57,7 @@ class SparseAE(Module):
 
         # See https://transformer-circuits.pub/2023/monosemantic-features/index.html
         if not self.use_tied_bias:
-            self.tied_bias = torch.zeros(self.input_dim)
+            self.register_buffer("tied_bias", torch.zeros(self.input_dim))
 
         self._encoder = TypedLinear(
             in_features=self.input_dim,
