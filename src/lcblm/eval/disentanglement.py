@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from sklearn.feature_selection import mutual_info_classif
-from torch import Tensor
+
+if TYPE_CHECKING:
+    from torch import Tensor
 
 
 def _entropy(y: np.ndarray) -> float:
@@ -19,7 +23,7 @@ def mig(
 
     For each factor: MI gap between top-1 and top-2 latent, normalised by H(factor).
     Average over factors. Uses sklearn mutual_info_classif for MI estimates.
-    """
+    """  # noqa: D401
     z = latent_activations.detach().cpu().numpy().astype(np.float32)
     n_factors = factors.shape[1]
 
@@ -27,7 +31,7 @@ def mig(
     for k in range(n_factors):
         y = factors[:, k]
         h_f = _entropy(y)
-        if h_f < 1e-8:
+        if h_f < 1e-8:  # noqa: PLR2004
             continue
         mi = mutual_info_classif(z, y, discrete_features=False, random_state=0)
         sorted_mi = np.sort(mi)[::-1]
@@ -47,7 +51,7 @@ def inverted_mig(
     Gap normalised by H(factor_top1). Average over alive latents.
     """
     z = latent_activations.detach().cpu().numpy().astype(np.float32)
-    n, latent_dim = z.shape
+    n, _latent_dim = z.shape
     n_factors = factors.shape[1]
 
     fire_counts = (z > 0).sum(axis=0)
@@ -59,15 +63,22 @@ def inverted_mig(
     scores: list[float] = []
     for j in alive_indices:
         z_j = z[:, j : j + 1]
-        mi_per_factor = np.array([
-            mutual_info_classif(z_j, factors[:, k], discrete_features=False, random_state=0)[0]
-            for k in range(n_factors)
-        ])
+        mi_per_factor = np.array(
+            [
+                mutual_info_classif(
+                    z_j,
+                    factors[:, k],
+                    discrete_features=False,
+                    random_state=0,
+                )[0]
+                for k in range(n_factors)
+            ],
+        )
         top1_idx = int(np.argmax(mi_per_factor))
         sorted_mi = np.sort(mi_per_factor)[::-1]
 
         h_f = _entropy(factors[:, top1_idx])
-        if h_f < 1e-8:
+        if h_f < 1e-8:  # noqa: PLR2004
             continue
 
         gap = sorted_mi[0] - (sorted_mi[1] if len(sorted_mi) > 1 else 0.0)

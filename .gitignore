@@ -249,7 +249,7 @@ sanity_outputs/
 sweep_outputs/
 
 # Datasets
-data/
+# data/
 
 # Soft-retired experiments
 experiments/vaee_mnist/

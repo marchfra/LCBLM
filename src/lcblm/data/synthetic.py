@@ -13,6 +13,7 @@ def make_synthetic(  # noqa: PLR0913
     input_dim: int = 256,
     noise_std: float = 0.1,
     seed: int = 0,
+    *,
     binary_coefs: bool = False,
 ) -> tuple[FlatTensorDataset, Tensor]:
     """Sparse superposition benchmark.
@@ -35,7 +36,9 @@ def make_synthetic(  # noqa: PLR0913
     if binary_coefs:
         coefs = torch.ones(n_samples, n_active)
     else:
-        coefs = torch.randint(0, 2, (n_samples, n_active), generator=rng).float() * 2 - 1
+        coefs = (
+            torch.randint(0, 2, (n_samples, n_active), generator=rng).float() * 2 - 1
+        )
     selected = features[indices]  # [N, n_active, input_dim]
     data = (coefs.unsqueeze(-1) * selected).sum(dim=1)  # [N, input_dim]
     data = data + torch.randn(n_samples, input_dim, generator=rng) * noise_std

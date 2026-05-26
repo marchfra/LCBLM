@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +17,7 @@ from lcblm.baselines import (
     compute_beta_vae_loss,
     compute_vq_vae_loss,
 )
+from lcblm.eval.metrics import alive_dict_size as _alive_dict_size
 from lcblm.sae_utils import SparseAE, TopK
 from lcblm.sae_utils.activations import update_dead_latent_counts
 from lcblm.sae_utils.losses import loss_k_aux, loss_top_k
@@ -29,11 +29,12 @@ from lcblm.training.models import (
     build_vq_vae,
     param_matched_latent_dim,
 )
-from lcblm.eval.metrics import alive_dict_size as _alive_dict_size
 from lcblm.utils.data import typed_dataloader
 from lcblm.vaee.models import VAEE, compute_loss
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import wandb
     from lcblm.training.configs import (
         BetaVAEConfig,
@@ -261,7 +262,10 @@ def train_vaee(  # noqa: PLR0915
     model.eval()
     threshold = cfg.l0_threshold
     result.alive_dict_size = _compute_alive(
-        model, val_loader, cfg.device, lambda out: (out.c > threshold).float()
+        model,
+        val_loader,
+        cfg.device,
+        lambda out: (out.c > threshold).float(),
     )
     return model, result
 
@@ -382,7 +386,10 @@ def train_topk_sae(  # noqa: C901, PLR0915
         model.load_state_dict(best_state)
     model.eval()
     result.alive_dict_size = _compute_alive(
-        model, val_loader, cfg.device, lambda out: out.latents
+        model,
+        val_loader,
+        cfg.device,
+        lambda out: out.latents,
     )
     return model, result
 
@@ -498,7 +505,10 @@ def _train_l1_sae(  # noqa: C901, PLR0913, PLR0915
         model.load_state_dict(best_state)
     model.eval()
     result.alive_dict_size = _compute_alive(
-        model, val_loader, cfg.device, lambda out: out.latents
+        model,
+        val_loader,
+        cfg.device,
+        lambda out: out.latents,
     )
     return model, result
 
@@ -532,7 +542,7 @@ def train_sae_param(
     return _train_l1_sae("sae_param", latent_dim, train_ds, val_ds, cfg, wandb_run)
 
 
-def train_vq_vae(  # noqa: PLR0915
+def train_vq_vae(  # noqa: C901, PLR0915
     train_ds: FlatTensorDataset,
     val_ds: FlatTensorDataset,
     cfg: VQVAEConfig,
@@ -661,7 +671,9 @@ def train_vq_vae(  # noqa: PLR0915
     model.eval()
     num_codes = cfg.num_codes
     result.alive_dict_size = _compute_alive(
-        model, val_loader, cfg.device,
+        model,
+        val_loader,
+        cfg.device,
         lambda out: _vq_one_hot(out.indices, num_codes),
     )
     return model, result
@@ -774,7 +786,9 @@ def train_beta_vae(  # noqa: PLR0915
     model.eval()
     l0_threshold = cfg.l0_threshold
     result.alive_dict_size = _compute_alive(
-        model, val_loader, cfg.device,
+        model,
+        val_loader,
+        cfg.device,
         lambda out: (out.mu.abs() > l0_threshold).float(),
     )
     return model, result

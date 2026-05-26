@@ -31,6 +31,7 @@ class VAEE(nn.Module):
         encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
         hidden_dim: int = 256,
         output_activation: nn.Module | None = None,
+        *,
         hard_gate: bool = True,
     ) -> None:
         if num_embeddings <= 0:
@@ -423,7 +424,7 @@ if __name__ == "__main__":
     import torch
     from torch import nn
     from torch.utils.data import DataLoader, random_split
-    from torchvision import datasets, transforms  # ty:ignore[unresolved-import]
+    from torchvision import datasets, transforms
     from tqdm import trange
 
     torch.manual_seed(42)
