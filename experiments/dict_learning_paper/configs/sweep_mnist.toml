@@ -1,0 +1,44 @@
+# Dict-learning Pareto sweep — MNIST
+# 784-dim (28×28, flattened, normalised to [0, 1]).
+# Sparsity points match sweep_synthetic_hard for cross-dataset comparability.
+#
+# Usage:
+#   dl-sweep --config experiments/dict_learning_paper/configs/sweep_mnist.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset = "mnist"
+data_path = "/path/to/data"
+output_dir = "experiments/dict_learning_paper/outputs"
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs = 200
+lr = 1e-4
+batch_size = 512
+early_stopping_patience = 50
+
+# ── VAEE ──────────────────────────────────────────────────────────────────────
+# pi values give target L0 = [4, 8, 16, 10], matching TopK k below.
+[vaee]
+num_embeddings = 64
+embedding_size = 32
+pi = [0.0625, 0.125, 0.25, 0.15625]
+
+# ── TopK-SAE ──────────────────────────────────────────────────────────────────
+# Default latent_dim = 0 → 4 × 784 = 3136 (standard 4× overcompleteness).
+[topk_sae]
+k = [4, 8, 16, 10]
+
+# ── L1-SAE ────────────────────────────────────────────────────────────────────
+[sae_concept]
+vaee_num_embeddings = 64
+lambda_l1 = [0.01, 0.1, 1.0]
+
+# ── VQ-VAE ────────────────────────────────────────────────────────────────────
+[vq_vae]
+num_codes = [64, 128, 256]
+
+# ── β-VAE ─────────────────────────────────────────────────────────────────────
+[beta_vae]
+latent_dim = 64
+kl_warmup_epochs = 20
+beta = [1e-3, 1e-2, 1e-1]
