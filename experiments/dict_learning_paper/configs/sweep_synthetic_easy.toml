@@ -6,16 +6,18 @@
 # Usage:
 #   dl-sweep --config experiments/dict_learning_paper/configs/sweep_synthetic_easy.toml
 
+wandb_project = "dict-learning-paper"
+
 # ── Dataset ───────────────────────────────────────────────────────────────────
 dataset = "synthetic"
 output_dir = "experiments/dict_learning_paper/outputs"
 
 # ── Shared training settings ──────────────────────────────────────────────────
 # (must come before any [section] — TOML scopes subsequent keys into the section)
-epochs = 50
-lr = 1e-3
-batch_size = 128
-early_stopping_patience = 5
+epochs = 1000
+lr = 1e-4
+batch_size = 256
+early_stopping_patience = 200
 
 [synthetic]
 n_samples = 1000
@@ -50,11 +52,10 @@ lambda_l1 = [0.1]
 # num_codes = number of distinct modes (8); each code memorises one mode.
 [vq_vae]
 embedding_dim = 4
-early_stopping_patience = 20
 num_codes = [8]
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
 [beta_vae]
 latent_dim = 8
-kl_warmup_epochs = 10
-beta = [1.0]
+kl_warmup_epochs = 50
+beta = [1e-3]

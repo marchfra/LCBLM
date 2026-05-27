@@ -4,16 +4,18 @@
 # Usage:
 #   dl-sweep --config experiments/dict_learning_paper/configs/sweep_synthetic_hard.toml
 
+wandb_project = "dict-learning-paper"
+
 # ── Dataset ───────────────────────────────────────────────────────────────────
 dataset = "synthetic"
 output_dir = "experiments/dict_learning_paper/outputs"
 # data_path is not needed for synthetic
 
 # ── Shared training settings ──────────────────────────────────────────────────
-epochs = 50
-lr = 1e-3
+epochs = 1000
+lr = 1e-4
 batch_size = 512
-early_stopping_patience = 5
+early_stopping_patience = 200
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
 # pi = target_l0 / num_embeddings → [4/64, 8/64, 16/64] matches TopK k=[4,8,16]
@@ -34,7 +36,6 @@ lambda_l1 = [1.0, 5.0, 10.0]
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────
 # Higher patience because dead-code resets cause val loss to fluctuate early on.
 [vq_vae]
-early_stopping_patience = 20
 num_codes = [64, 128, 256]
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
@@ -42,4 +43,4 @@ num_codes = [64, 128, 256]
 [beta_vae]
 latent_dim = 64
 kl_warmup_epochs = 10
-beta = [1.0, 2.0, 4.0]
+beta = [1e-4, 1e-3, 1e-2]
