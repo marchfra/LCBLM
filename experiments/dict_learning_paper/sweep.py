@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import nn
 
+import wandb
 from lcblm.data.image_loaders import load_dsprites, load_fmnist, load_mnist
 from lcblm.data.synthetic import make_synthetic
 from lcblm.training.configs import MODEL_CONFIG_CLASSES, VAEEConfig, _BaseConfig
@@ -231,10 +232,31 @@ def main() -> None:
             cfg = _make_cfg(cfg_cls, raw, model_raw, sweep_param, sweep_val)
             set_seeds(cfg.seed)
 
-            model, result = _TRAIN_FNS[model_name](train_ds, val_ds, cfg)
+            wandb_run: wandb.sdk.wandb_run.Run | None = None
+            if cfg.wandb_project:
+                wandb_run = wandb.init(
+                    project=cfg.wandb_project,
+                    group=dataset,
+                    name=f"{model_name}_{run_label}",
+                    tags=[dataset, model_name],
+                    config=dataclasses.asdict(cfg)
+                    | {"model_type": model_name, "dataset": dataset},
+                    reinit=True,
+                )
+
+            model, result = _TRAIN_FNS[model_name](train_ds, val_ds, cfg, wandb_run)
 
             out_dir = out_root / f"{model_name}_{run_label}"
             _save_run(model_name, model, cfg, result, out_dir)
+
+            if wandb_run is not None:
+                artifact = wandb.Artifact(
+                    name=f"{model_name}_{run_label}",
+                    type="run_result",
+                )
+                artifact.add_file(str(out_dir / "results.json"))
+                wandb_run.log_artifact(artifact)
+                wandb_run.finish()
 
             print(
                 f"  alive={result.alive_dict_size}"
