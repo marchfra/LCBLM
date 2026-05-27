@@ -251,7 +251,7 @@ def main() -> None:
 
             if wandb_run is not None:
                 artifact = wandb.Artifact(
-                    name=f"{model_name}_{run_label}",
+                    name=f"{model_name}-{run_label.replace('=', '_')}",
                     type="run_result",
                 )
                 artifact.add_file(str(out_dir / "results.json"))
