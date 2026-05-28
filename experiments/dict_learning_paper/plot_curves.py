@@ -19,6 +19,7 @@ import numpy as np
 
 _MODEL_DISPLAY = {
     "vaee": "VAEE",
+    "vaee_shared_encoder": "VAEE-Shared Encoder",
     "topk_sae": "TopK-SAE",
     "sae_concept": "L1-SAE",
     "vq_vae": "VQ-VAE",
@@ -44,15 +45,15 @@ def plot(out_dir: Path) -> None:
     n_models = len(_ORDER)
     fig, axes = plt.subplots(
         n_models,
-        3,
-        figsize=(14, 3 * n_models),
+        4,
+        figsize=(16, 3 * n_models),
         squeeze=False,
         sharex=False,
     )
     fig.suptitle(f"Learning curves — {out_dir.name}", fontsize=14)
 
     for row, model_key in enumerate(_ORDER):
-        ax_train, ax_val, ax_l0 = axes[row]
+        ax_train_mse, ax_train_l0, ax_val_mse, ax_val_l0 = axes[row]
         model_runs = runs[model_key]
         colors = _CMAP(np.linspace(0.2, 0.9, max(len(model_runs), 1)))
 
@@ -63,47 +64,45 @@ def plot(out_dir: Path) -> None:
 
             best_epoch = int(np.argmin(run["val_recon"])) + 1
 
-            ax_train.plot(
-                epochs,
-                run["train_recon"],
-                color=color,
-                label=label,
-                linewidth=1.5,
+            ax_train_mse.plot(
+                epochs, run["train_recon"], color=color, label=label, linewidth=1.5
             )
-            ax_train.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
+            ax_train_mse.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
 
-            ax_val.plot(
-                epochs,
-                run["val_recon"],
-                color=color,
-                label=label,
-                linewidth=1.5,
-            )
-            ax_val.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
-
-            if run["val_l0"] and run["val_l0"][0] > 0:
-                ax_l0.plot(
-                    epochs,
-                    run["val_l0"],
-                    color=color,
-                    label=label,
-                    linewidth=1.5,
+            if run.get("train_l0") and run["train_l0"][0] > 0:
+                ax_train_l0.plot(
+                    epochs, run["train_l0"], color=color, label=label, linewidth=1.5
                 )
-                ax_l0.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
+                ax_train_l0.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
 
-        ax_train.set_title(_MODEL_DISPLAY[model_key], fontsize=11, loc="left")
-        ax_train.set_ylabel("Train recon MSE")
-        ax_val.set_ylabel("Val recon MSE")
-        ax_l0.set_ylabel("Val L0")
+            ax_val_mse.plot(
+                epochs, run["val_recon"], color=color, label=label, linewidth=1.5
+            )
+            ax_val_mse.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
+
+            if run.get("val_l0") and run["val_l0"][0] > 0:
+                ax_val_l0.plot(
+                    epochs, run["val_l0"], color=color, label=label, linewidth=1.5
+                )
+                ax_val_l0.axvline(best_epoch, color=color, linewidth=0.8, linestyle=":")
+
+        ax_train_mse.set_title(_MODEL_DISPLAY[model_key], fontsize=11, loc="left")
+        ax_train_mse.set_ylabel("Train recon MSE")
+        ax_train_l0.set_ylabel("Train L0")
+        ax_val_mse.set_ylabel("Val recon MSE")
+        ax_val_l0.set_ylabel("Val L0")
         if row == n_models - 1:
-            ax_train.set_xlabel("Epoch")
-            ax_val.set_xlabel("Epoch")
-            ax_l0.set_xlabel("Epoch")
+            ax_train_mse.set_xlabel("Epoch")
+            ax_train_l0.set_xlabel("Epoch")
+            ax_val_mse.set_xlabel("Epoch")
+            ax_val_l0.set_xlabel("Epoch")
         if model_runs:
-            ax_train.legend(fontsize=8, title="sparsity", framealpha=0.7)
-            ax_val.legend(fontsize=8, title="sparsity", framealpha=0.7)
-            if run["val_l0"] and run["val_l0"][0] > 0:
-                ax_l0.legend(fontsize=8, title="sparsity", framealpha=0.7)
+            ax_train_mse.legend(fontsize=8, title="sparsity", framealpha=0.7)
+            ax_val_mse.legend(fontsize=8, title="sparsity", framealpha=0.7)
+            if run.get("train_l0") and run["train_l0"][0] > 0:
+                ax_train_l0.legend(fontsize=8, title="sparsity", framealpha=0.7)
+            if run.get("val_l0") and run["val_l0"][0] > 0:
+                ax_val_l0.legend(fontsize=8, title="sparsity", framealpha=0.7)
 
     fig.tight_layout()
     out_path = out_dir / "learning_curves.png"

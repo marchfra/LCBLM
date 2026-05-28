@@ -59,6 +59,42 @@ class VAEEConfig(_BaseConfig):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VAEESharedEncoderConfig(_BaseConfig):
+    """Config for VAEESharedEncoder: shared encoder, gated-prototype decoder, no gamma term."""
+
+    num_embeddings: int
+    embedding_size: int
+    pi: float
+    hidden_dim: int = 256
+    encoder_type: Literal["mlp", "linear", "shallow"] = "shallow"
+    gumbel_temp: float = 0.5
+    sigma_0: float = 0.1
+    sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine"
+    topology: Literal["stacked", "summed"] = "stacked"
+    beta: float = 4.0
+    lambda_ent: float = 1.0
+    lambda_ortho: float = 0.0
+    l0_threshold: float = 0.5
+    gate_mean_only: bool = False
+
+    def __post_init__(self) -> None:
+        minimum_l0 = 2.0
+        maximum_l0 = 7.0
+        target_l0 = self.num_embeddings * self.pi
+
+        if target_l0 < minimum_l0:
+            warnings.warn(
+                f"Your target L0 is {target_l0}, lower than {minimum_l0}.",
+                stacklevel=2,
+            )
+        if target_l0 > maximum_l0:
+            warnings.warn(
+                f"Your target L0 is {target_l0}, higher than {maximum_l0}.",
+                stacklevel=2,
+            )
+
+
+@dataclass(frozen=True, kw_only=True)
 class TopKSAEConfig(_BaseConfig):
     k: int
     latent_dim: int = 0  # 0 → 4 * input_dim
@@ -119,6 +155,7 @@ class DatasetConfig:
 
 MODEL_CONFIG_CLASSES: dict[str, type] = {
     "vaee": VAEEConfig,
+    "vaee_shared_encoder": VAEESharedEncoderConfig,
     "topk_sae": TopKSAEConfig,
     "sae_concept": SAEConceptConfig,
     "sae_param": SAEParamConfig,

@@ -29,10 +29,20 @@ binary_coefs = true
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
 # num_embeddings = n_features = 8; pi = n_active / num_embeddings = 1/8.
-# target_l0 = 1 will trigger a "below 2" warning (expected, caught & ignored).
+# beta is the sparsity-KL weight. Bumped to 32 to push actual L0 closer to
+# target_l0 = 1. target_l0 = 1 will trigger a "below 2" warning (expected).
 [vaee]
 num_embeddings = 8
 embedding_size = 4
+beta = 32.0
+pi = [0.125]
+
+# ── VAEE (shared encoder) ─────────────────────────────────────────────────────
+# Same as vaee but without gamma — no per-concept encoder mean to regularize.
+[vaee_shared_encoder]
+num_embeddings = 8
+embedding_size = 4
+beta = 32.0
 pi = [0.125]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
@@ -44,9 +54,11 @@ k_aux = 8
 k = [1]
 
 # ── L1-SAE ────────────────────────────────────────────────────────────────────
+# Sweeping lambda=2.0 and 3.0; lambda=1.0 gave L0≈3.8, lambda=5.0 blew MSE.
+# These two points bracket the useful range without entering the MSE-blowup zone.
 [sae_concept]
 vaee_num_embeddings = 8
-lambda_l1 = [0.1]
+lambda_l1 = [2.0, 3.0]
 
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────
 # num_codes = number of distinct modes (8); each code memorises one mode.
@@ -55,7 +67,10 @@ embedding_dim = 4
 num_codes = [8]
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
+# Pre-collapse grid: β=0.5 and above collapse on this dataset; usable range is
+# β ∈ [0.05, 0.4]. Five points bracket the front from high-L0/low-MSE (0.05)
+# to the collapse boundary (0.4).
 [beta_vae]
 latent_dim = 8
-kl_warmup_epochs = 50
-beta = [1e-3]
+kl_warmup_epochs = 10
+beta = [0.05, 0.1, 0.2, 0.3, 0.4]

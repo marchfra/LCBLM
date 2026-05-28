@@ -43,6 +43,7 @@ from lcblm.training.loops import (
     train_sae_concept,
     train_topk_sae,
     train_vaee,
+    train_vaee_shared_encoder,
     train_vq_vae,
 )
 from lcblm.utils import get_device, set_seeds
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
 
 _TRAIN_FNS: dict[str, Callable[..., tuple[nn.Module, RunResult]]] = {
     "vaee": train_vaee,
+    "vaee_shared_encoder": train_vaee_shared_encoder,
     "topk_sae": train_topk_sae,
     "sae_concept": train_sae_concept,
     "vq_vae": train_vq_vae,
@@ -64,7 +66,7 @@ _TRAIN_FNS: dict[str, Callable[..., tuple[nn.Module, RunResult]]] = {
 }
 
 # Canonical order; models absent from the TOML are silently skipped.
-_MODEL_ORDER = ("vaee", "topk_sae", "sae_concept", "vq_vae", "beta_vae")
+_MODEL_ORDER = ("vaee", "vaee_shared_encoder", "topk_sae", "sae_concept", "vq_vae", "beta_vae")
 
 # _BaseConfig fields that may appear in the TOML; 'device' is excluded because
 # it is resolved automatically via the field's default_factory (get_device).

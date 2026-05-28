@@ -26,11 +26,17 @@ from lcblm.training.models import (
     build_ref_vaee,
     build_sae,
     build_vaee,
+    build_vaee_shared_encoder,
     build_vq_vae,
     param_matched_latent_dim,
 )
 from lcblm.utils.data import typed_dataloader
-from lcblm.vaee.models import VAEE, compute_loss
+from lcblm.vaee.models import (
+    VAEE,
+    VAEESharedEncoder,
+    compute_loss,
+    compute_loss_shared_encoder,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -42,6 +48,7 @@ if TYPE_CHECKING:
         SAEParamConfig,
         TopKSAEConfig,
         VAEEConfig,
+        VAEESharedEncoderConfig,
         VQVAEConfig,
     )
     from lcblm.utils.data import FlatTensorDataset
@@ -63,6 +70,8 @@ class RunResult:
     best_val_recon: float = float("inf")
     best_l0: float = float("inf")
     alive_dict_size: int = 0
+    matched_fraction: float | None = None
+    mean_cosine_sim: float | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -266,6 +275,168 @@ def train_vaee(  # noqa: PLR0915
         val_loader,
         cfg.device,
         lambda out: (out.c > threshold).float(),
+    )
+    return model, result
+
+
+def train_vaee_shared_encoder(  # noqa: PLR0915
+    train_ds: FlatTensorDataset,
+    val_ds: FlatTensorDataset,
+    cfg: VAEESharedEncoderConfig,
+    wandb_run: wandb.sdk.wandb_run.Run | None = None,
+) -> tuple[VAEESharedEncoder, RunResult]:
+    input_dim = train_ds.input_dim
+    model = build_vaee_shared_encoder(input_dim, cfg)
+    optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    train_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False)
+    result = RunResult(model_name="vaee_shared_encoder", n_concepts=cfg.num_embeddings)
+    best_state: dict | None = None
+
+    for epoch in trange(cfg.epochs, desc="VAEESharedEncoder", unit="epoch"):
+        model.train()
+        epoch_terms: dict[str, float] = {
+            "total": 0.0,
+            "recon": 0.0,
+            "cond_kl": 0.0,
+            "sparsity": 0.0,
+            "entropy": 0.0,
+            "ortho": 0.0,
+        }
+        t_l0 = t_count = 0.0
+        for batch in typed_dataloader(train_loader):
+            tokens = batch.to(cfg.device)
+            out = model(tokens)
+            decoder_weight = (
+                model.decoder_first_weight()
+                if cfg.topology == "stacked" and cfg.lambda_ortho > 0
+                else None
+            )
+            loss_out = compute_loss_shared_encoder(
+                target=tokens,
+                input=out.recon,
+                alpha=out.alpha,
+                pi=cfg.pi,
+                beta=cfg.beta,
+                lambda_ent=cfg.lambda_ent,
+                lambda_ortho=cfg.lambda_ortho,
+                decoder_weight=decoder_weight,
+                num_embeddings=model.num_embeddings,
+                embedding_size=model.embedding_size,
+            )
+            optimizer.zero_grad()
+            loss_out.total_loss.backward()
+            optimizer.step()
+            epoch_terms["total"] += loss_out.total_loss.item()
+            epoch_terms["recon"] += loss_out.recon_loss.item()
+            epoch_terms["cond_kl"] += loss_out.cond_kl_loss.item()
+            epoch_terms["sparsity"] += loss_out.sparsity_loss.item()
+            epoch_terms["entropy"] += loss_out.entropy_loss.item()
+            epoch_terms["ortho"] += loss_out.ortho_loss.item()
+            with torch.no_grad():
+                t_l0 += (out.c > cfg.l0_threshold).float().sum(dim=1).sum().item()
+                t_count += out.c.shape[0]
+
+        n_tr = len(train_loader)
+        result.train_recon.append(epoch_terms["recon"] / n_tr)
+        result.train_l0.append(t_l0 / t_count)
+
+        model.eval()
+        val_terms: dict[str, float] = {
+            "total": 0.0,
+            "recon": 0.0,
+            "cond_kl": 0.0,
+            "sparsity": 0.0,
+            "entropy": 0.0,
+            "ortho": 0.0,
+        }
+        v_l0 = v_count = 0.0
+        with torch.inference_mode():
+            for batch in typed_dataloader(val_loader):
+                tokens = batch.to(cfg.device)
+                out = model(tokens)
+                loss_out = compute_loss_shared_encoder(
+                    target=tokens,
+                    input=out.recon,
+                    alpha=out.alpha,
+                    pi=cfg.pi,
+                    beta=cfg.beta,
+                    lambda_ent=cfg.lambda_ent,
+                    lambda_ortho=cfg.lambda_ortho,
+                    decoder_weight=(
+                        model.decoder_first_weight()
+                        if cfg.topology == "stacked" and cfg.lambda_ortho > 0
+                        else None
+                    ),
+                    num_embeddings=model.num_embeddings,
+                    embedding_size=model.embedding_size,
+                )
+                val_terms["total"] += loss_out.total_loss.item()
+                val_terms["recon"] += loss_out.recon_loss.item()
+                val_terms["cond_kl"] += loss_out.cond_kl_loss.item()
+                val_terms["sparsity"] += loss_out.sparsity_loss.item()
+                val_terms["entropy"] += loss_out.entropy_loss.item()
+                val_terms["ortho"] += loss_out.ortho_loss.item()
+                v_l0 += (out.c > cfg.l0_threshold).float().sum(dim=1).sum().item()
+                v_count += out.c.shape[0]
+
+        n_val = len(val_loader)
+        val_recon = val_terms["recon"] / n_val
+        val_total = val_terms["total"] / n_val
+        result.val_recon.append(val_recon)
+        result.val_total.append(val_total)
+        result.val_l0.append(v_l0 / v_count)
+
+        if wandb_run is not None:
+            log_terms = {
+                k: v
+                for k, v in epoch_terms.items()
+                if k != "ortho" or cfg.lambda_ortho > 0
+            }
+            log_val_terms = {
+                k: v
+                for k, v in val_terms.items()
+                if k != "ortho" or cfg.lambda_ortho > 0
+            }
+            wandb_run.log(
+                {f"train/vaee_se_{k}": v / n_tr for k, v in log_terms.items()}
+                | {f"val/vaee_se_{k}": v / n_val for k, v in log_val_terms.items()}
+                | {
+                    "train/vaee_se_l0": result.train_l0[-1],
+                    "val/vaee_se_l0": result.val_l0[-1],
+                },
+                step=epoch + 1,
+            )
+
+        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+            result.best_val_total = val_total
+            result.best_val_recon = val_recon
+            result.best_l0 = result.val_l0[-1]
+            best_state = {
+                k: v.detach().clone().cpu() for k, v in model.state_dict().items()
+            }
+            if wandb_run is not None:
+                wandb_run.summary.update(
+                    {
+                        "best_val_total": result.best_val_total,
+                        "best_val_recon": result.best_val_recon,
+                        "best_l0": result.best_l0,
+                    },
+                )
+        elif _early_stop(
+            result.val_total,
+            cfg.early_stopping_patience,
+            cfg.early_stopping_min_delta,
+        ):
+            print(f"   Early stopping at epoch {epoch + 1}")
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    model.eval()
+    threshold = cfg.l0_threshold
+    result.alive_dict_size = _compute_alive(
+        model, val_loader, cfg.device, lambda out: (out.c > threshold).float()
     )
     return model, result
 
@@ -722,7 +893,12 @@ def train_beta_vae(  # noqa: PLR0915
         result.train_l0.append(t_l0 / t_count)
 
         model.eval()
-        val_terms: dict[str, float] = {"total": 0.0, "recon": 0.0, "kl": 0.0}
+        val_terms: dict[str, float] = {
+            "total": 0.0,
+            "recon": 0.0,
+            "kl": 0.0,
+            "kl_raw": 0.0,
+        }
         v_l0 = v_count = 0.0
         with torch.inference_mode():
             for batch in typed_dataloader(val_loader):
@@ -736,13 +912,17 @@ def train_beta_vae(  # noqa: PLR0915
                 val_terms["total"] += loss_out.total_loss.item()
                 val_terms["recon"] += loss_out.recon_loss.item()
                 val_terms["kl"] += beta_eff * loss_out.kl_loss.item()
+                val_terms["kl_raw"] += loss_out.kl_loss.item()
                 active = (out.mu.abs() > cfg.l0_threshold).float()
                 v_l0 += active.sum(dim=1).sum().item()
                 v_count += out.mu.shape[0]
 
         n_val = len(val_loader)
         val_recon = val_terms["recon"] / n_val
-        val_total = val_terms["total"] / n_val
+        # Model selection uses the fixed-β ELBO, not the warmup-weighted total:
+        # while β_eff ramps up the live total is non-comparable across epochs
+        # (it spuriously favours epoch 1). recon + β·KL_raw stays comparable.
+        val_total = val_recon + cfg.beta * (val_terms["kl_raw"] / n_val)
         result.val_recon.append(val_recon)
         result.val_total.append(val_total)
         result.val_l0.append(v_l0 / v_count)

@@ -210,6 +210,176 @@ class VAEE(nn.Module):
 VariationalAutoEmbeddingEncoder = VAEE
 
 
+class VAEESharedEncoder(nn.Module):
+    """VAEE variant with a shared encoder projection used only for gating.
+
+    A single linear projection e = W(x) ∈ ℝ^d computes gating probabilities
+    α_k = sigmoid(sim(e, h_k) / τ) for each concept. The decoder receives
+    z_k = c_k · h_k (gated prototypes) rather than per-concept encoder means.
+    At eval, the soft gate z_k = α_k · h_k preserves per-sample variation.
+    The conditional-embedding KL (γ term) is absent — there is no μ to regularize.
+    """
+
+    class Output(NamedTuple):
+        recon: Tensor
+        alpha: Tensor       # (B, K)
+        c: Tensor           # (B, K) — soft at train, continuous at eval
+        e: Tensor           # (B, d) — shared projection
+
+    def __init__(  # noqa: PLR0913
+        self,
+        input_dim: int,
+        num_embeddings: int,
+        embedding_size: int,
+        gumbel_temp: float = 0.5,
+        sigma_0: float = 0.1,
+        sim_metric: Literal["cosine", "inner_product", "neg_euclidean"] = "cosine",
+        topology: Literal["stacked", "summed"] = "stacked",
+        encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
+        hidden_dim: int = 256,
+        output_activation: nn.Module | None = None,
+        gate_mean_only: bool = False,
+    ) -> None:
+        if num_embeddings <= 0:
+            msg = "num_embeddings must be non-negative."
+            raise ValueError(msg)
+        if embedding_size <= 0:
+            msg = "embedding_size must be non-negative."
+            raise ValueError(msg)
+        if gumbel_temp <= 0:
+            msg = "gumbel_temp must be non-negative."
+            raise ValueError(msg)
+        if sigma_0 < 0:
+            msg = "sigma_0 must be non-negative."
+            raise ValueError(msg)
+
+        super().__init__()
+
+        self.num_embeddings = num_embeddings
+        self.embedding_size = embedding_size
+        self.gumbel_temp = gumbel_temp
+        self.sigma_0 = sigma_0
+        self.sim_metric = sim_metric
+        self.topology = topology
+        self.gate_mean_only = gate_mean_only
+
+        self._output_activation = (
+            output_activation if output_activation is not None else nn.Identity()
+        )
+
+        # Encoder outputs a single d-dim vector (not K*d)
+        enc_out = embedding_size
+        dec_in = num_embeddings * embedding_size if topology == "stacked" else embedding_size
+
+        match encoder_type:
+            case "mlp":
+                self._encoder = MLP(input_dim, hidden_dim, enc_out)
+                self._decoder = nn.Sequential(
+                    MLP(dec_in, hidden_dim, input_dim),
+                    self._output_activation,
+                )
+            case "linear":
+                self._encoder = nn.Linear(input_dim, enc_out)
+                self._decoder = nn.Sequential(
+                    nn.Linear(dec_in, input_dim),
+                    self._output_activation,
+                )
+            case "shallow":
+                self._encoder = nn.Sequential(nn.Linear(input_dim, enc_out), nn.GELU())
+                self._decoder = nn.Sequential(
+                    nn.Linear(dec_in, input_dim),
+                    self._output_activation,
+                )
+            case _:
+                msg = (
+                    f"Unknown encoder_type: {encoder_type!r}. "
+                    f"Must be 'mlp', 'linear', or 'shallow'."
+                )
+                raise ValueError(msg)
+
+        self.prototypes = nn.Parameter(
+            torch.randn(num_embeddings, embedding_size),
+        )
+
+        self._logit_scale = nn.Parameter(torch.log(torch.tensor(10.0)))
+
+        if sim_metric == "neg_euclidean":
+            self._neg_euc_bias = nn.Parameter(
+                torch.full((1,), math.sqrt(2.0 * embedding_size)),
+            )
+
+    @property
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
+
+    def _compute_logits(self, e: Tensor) -> Tensor:
+        """Compute per-concept logits from the shared projection e ∈ ℝ^(B,d)."""
+        scale = torch.clamp(self._logit_scale.exp(), min=1.0, max=100.0)
+        match self.sim_metric:
+            case "cosine":
+                # (B, 1, d) vs (1, K, d) → (B, K)
+                sim = cosine_similarity(
+                    e.unsqueeze(1), self.prototypes.unsqueeze(0), dim=-1
+                )
+                return sim * scale
+            case "inner_product":
+                sim = torch.einsum("be,ke->bk", e, self.prototypes)
+                return sim * scale
+            case "neg_euclidean":
+                dist = torch.norm(
+                    e.unsqueeze(1) - self.prototypes.unsqueeze(0), dim=-1
+                )
+                return (self._neg_euc_bias - dist) * scale
+            case _:
+                msg = f"Unknown sim_metric: {self.sim_metric!r}"
+                raise ValueError(msg)
+
+    def sample(self, logits: Tensor, alpha: Tensor) -> tuple[Tensor, Tensor]:
+        """Sample c and build z = c · h_k.
+
+        Train: c via Gumbel-Sigmoid; z = c · prototypes (+ optional noise).
+        Eval:  z = alpha · prototypes (continuous gate carries per-sample info).
+        """
+        proto = self.prototypes.unsqueeze(0)  # (1, K, d)
+        if self.training:
+            u1 = clamp_positive(torch.rand_like(logits))
+            u2 = clamp_positive(torch.rand_like(logits))
+            logistic_noise = torch.log(u1) - torch.log(u2)
+            c = torch.sigmoid((logits + logistic_noise) / self.gumbel_temp)
+            z = c.unsqueeze(-1) * proto  # (B, K, d)
+            if self.gate_mean_only:
+                z = z + self.sigma_0 * torch.randn_like(z)
+        else:
+            c = alpha
+            z = alpha.unsqueeze(-1) * proto  # (B, K, d)
+        return z, c
+
+    def decode(self, z: Tensor) -> Tensor:
+        if self.topology == "summed":
+            z_in = z.sum(dim=1)
+        else:
+            z_in = z.flatten(start_dim=1)
+        return self._decoder(z_in)
+
+    def decoder_first_weight(self) -> Tensor:
+        first = self._decoder[0]
+        if isinstance(first, MLP):
+            return first.linear1.weight
+        assert isinstance(first, nn.Linear)
+        return first.weight  # type: ignore[return-value]
+
+    def forward(self, x: Tensor) -> Output:
+        e = self._encoder(x)                    # (B, d)
+        logits = self._compute_logits(e)        # (B, K)
+        alpha = torch.sigmoid(logits)
+        z, c = self.sample(logits, alpha)
+        recon = self.decode(z)
+        return self.Output(recon=recon, alpha=alpha, c=c, e=e)
+
+    def __call__(self, x: Tensor) -> Output:
+        return super().__call__(x)
+
+
 class LossOutput(NamedTuple):
     total_loss: Tensor
     recon_loss: Tensor
@@ -404,6 +574,62 @@ def compute_loss(  # noqa: PLR0913
         ortho_loss = target.new_zeros(1)
 
     total_loss = recon_loss + cond_kl_loss + sparsity_loss + entropy_loss + ortho_loss
+
+    return LossOutput(
+        total_loss,
+        recon_loss,
+        cond_kl_loss,
+        sparsity_loss,
+        entropy_loss,
+        ortho_loss,
+    )
+
+
+def compute_loss_shared_encoder(  # noqa: PLR0913
+    target: Tensor,
+    input: Tensor,  # noqa: A002
+    alpha: Tensor,
+    pi: float,
+    beta: float,
+    lambda_ent: float,
+    lambda_ortho: float = 0.0,
+    decoder_weight: Tensor | None = None,
+    num_embeddings: int = 0,
+    embedding_size: int = 0,
+) -> LossOutput:
+    """Compute the loss for VAEEv2 training.
+
+    Identical to compute_loss except the conditional-embedding KL (gamma term)
+    is absent — VAEEv2 has no per-concept encoder mean to regularize.
+    cond_kl_loss is always zero so LossOutput fields remain compatible with
+    the existing training loop and logging infrastructure.
+    """
+    recon_loss = mse_loss(input, target)
+
+    cond_kl_loss = target.new_zeros(1)
+
+    mean_alpha = alpha.mean(dim=0)
+    mean_alpha = clamp_0_1(mean_alpha)
+    term_1 = mean_alpha * torch.log(mean_alpha / pi)
+    term_2 = (1 - mean_alpha) * torch.log((1 - mean_alpha) / (1 - pi))
+    sparsity_loss = beta * (term_1 + term_2).mean()
+
+    entropy_loss = lambda_ent * (
+        -alpha * torch.log(alpha + 1e-8)
+        - (1 - alpha) * torch.log(1 - alpha + 1e-8)
+    ).mean()
+
+    if lambda_ortho > 0 and decoder_weight is not None:
+        n_pairs = num_embeddings * (num_embeddings - 1) / 2
+        ortho_loss = (
+            lambda_ortho
+            * compute_decoder_ortho_loss(decoder_weight, num_embeddings, embedding_size)
+            / max(1.0, n_pairs)
+        )
+    else:
+        ortho_loss = target.new_zeros(1)
+
+    total_loss = recon_loss + sparsity_loss + entropy_loss + ortho_loss
 
     return LossOutput(
         total_loss,

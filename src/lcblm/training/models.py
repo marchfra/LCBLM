@@ -8,7 +8,7 @@ from lcblm.baselines import VQVAE, BetaVAE
 from lcblm.sae_utils import SparseAE
 from lcblm.sae_utils.dataset import compute_tied_bias
 from lcblm.training.configs import TopKSAEConfig
-from lcblm.vaee.models import VAEE
+from lcblm.vaee.models import VAEE, VAEESharedEncoder
 
 if TYPE_CHECKING:
     import torch
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         BetaVAEConfig,
         SAEParamConfig,
         VAEEConfig,
+        VAEESharedEncoderConfig,
         VQVAEConfig,
     )
     from lcblm.utils.data import FlatTensorDataset
@@ -35,6 +36,24 @@ def build_vaee(input_dim: int, cfg: VAEEConfig) -> VAEE:
         sigma_0=cfg.sigma_0,
         sim_metric=cfg.sim_metric,
         topology=cfg.topology,
+    ).to(cfg.device)
+
+
+def build_vaee_shared_encoder(
+    input_dim: int, cfg: VAEESharedEncoderConfig
+) -> VAEESharedEncoder:
+    return VAEESharedEncoder(
+        input_dim=input_dim,
+        hidden_dim=cfg.hidden_dim,
+        num_embeddings=cfg.num_embeddings,
+        embedding_size=cfg.embedding_size,
+        gumbel_temp=cfg.gumbel_temp,
+        output_activation=None,
+        encoder_type=cfg.encoder_type,
+        sigma_0=cfg.sigma_0,
+        sim_metric=cfg.sim_metric,
+        topology=cfg.topology,
+        gate_mean_only=cfg.gate_mean_only,
     ).to(cfg.device)
 
 
