@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import math
+import warnings
+
 import torch
 from torch import Tensor
 
 from lcblm.utils.data import FlatTensorDataset
+
+_MAX_ATOM_ATTEMPTS = 10_000
 
 
 def make_synthetic(  # noqa: PLR0913
@@ -15,6 +20,7 @@ def make_synthetic(  # noqa: PLR0913
     seed: int = 0,
     *,
     binary_coefs: bool = False,
+    min_separation: float | None = None,
 ) -> tuple[FlatTensorDataset, Tensor]:
     """Sparse superposition benchmark.
 
@@ -22,11 +28,48 @@ def make_synthetic(  # noqa: PLR0913
     coefficients drawn from {-1, +1} (default) or {+1} when binary_coefs=True,
     plus Gaussian noise.  Returns the dataset and the ground-truth feature
     matrix (needed for feature_recovery evaluation).
+
+    min_separation: minimum angular separation (radians) between any two atoms.
+    Defaults to π/n_features.  For input_dim == 2, atoms are placed at exact
+    uniform angular spacing with a random rotation. For input_dim > 2, atoms
+    are rejection-sampled until the constraint is met; falls back with a warning
+    after _MAX_ATOM_ATTEMPTS tries.
     """
     rng = torch.Generator().manual_seed(seed)
 
-    features = torch.randn(n_features, input_dim, generator=rng)
-    features = features / features.norm(dim=1, keepdim=True).clamp(min=1e-8)
+    if min_separation is None:
+        min_separation = math.pi / n_features
+    cos_threshold = math.cos(min_separation)
+
+    features = torch.zeros(n_features, input_dim)
+
+    if input_dim == 2:
+        # Analytic uniform spacing for 2D
+        base_angle = torch.rand(1, generator=rng).item() * 2 * math.pi
+        angle_step = 2 * math.pi / n_features
+        for i in range(n_features):
+            angle = base_angle + i * angle_step
+            features[i, 0] = math.cos(angle)
+            features[i, 1] = math.sin(angle)
+    else:
+        # Rejection sampling for higher dimensions
+        for i in range(n_features):
+            for attempt in range(_MAX_ATOM_ATTEMPTS):
+                candidate = torch.randn(input_dim, generator=rng)
+                candidate = candidate / candidate.norm().clamp(min=1e-8)
+                if (
+                    i == 0
+                    or (features[:i] @ candidate).abs().max().item() < cos_threshold
+                ):
+                    features[i] = candidate
+                    break
+            else:
+                warnings.warn(
+                    f"make_synthetic: min_separation={min_separation:.4f} rad not satisfied "
+                    f"for atom {i} after {_MAX_ATOM_ATTEMPTS} attempts; using last candidate.",
+                    stacklevel=2,
+                )
+                features[i] = candidate  # noqa: F821  (assigned in loop body above)
 
     # Vectorised: for each sample, random-shuffle feature indices and take first
     # n_active.
