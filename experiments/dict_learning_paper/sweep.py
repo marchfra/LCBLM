@@ -28,6 +28,7 @@ import dataclasses
 import json
 import tomllib
 import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +38,7 @@ from torch import nn
 import wandb
 from lcblm.data.image_loaders import load_dsprites, load_fmnist, load_mnist
 from lcblm.data.synthetic import make_synthetic
+from lcblm.eval.metrics import feature_recovery
 from lcblm.training.configs import MODEL_CONFIG_CLASSES, VAEEConfig, _BaseConfig
 from lcblm.training.loops import (
     train_beta_vae,
@@ -84,12 +86,17 @@ def _load_dataset(
     dataset: str,
     data_path: str | None,
     synthetic_cfg: dict | None = None,
-) -> tuple[FlatTensorDataset, FlatTensorDataset]:
+) -> tuple[FlatTensorDataset, FlatTensorDataset, torch.Tensor | None]:
+    """Return (train_ds, val_ds, gt_features).
+
+    gt_features is the [n_features, input_dim] ground-truth atom matrix for
+    synthetic datasets; None for all other datasets.
+    """
     if dataset == "synthetic":
-        full, _ = make_synthetic(**(synthetic_cfg or {}))
+        full, features = make_synthetic(**(synthetic_cfg or {}))
         n = len(full)
         cut = int(0.8 * n)
-        return FlatTensorDataset(full.data[:cut]), FlatTensorDataset(full.data[cut:])
+        return FlatTensorDataset(full.data[:cut]), FlatTensorDataset(full.data[cut:]), features
 
     if data_path is None:
         msg = "data_path is required for all datasets other than 'synthetic'"
@@ -97,15 +104,58 @@ def _load_dataset(
 
     if dataset in _FLAT_IMAGE_LOADERS:
         load_fn = _FLAT_IMAGE_LOADERS[dataset]
-        return load_fn(data_path, "train"), load_fn(data_path, "val")
+        return load_fn(data_path, "train"), load_fn(data_path, "val"), None
 
     if dataset == "dsprites":
         train_ds, _ = load_dsprites(data_path, "train")
         val_ds, _ = load_dsprites(data_path, "val")
-        return train_ds, val_ds
+        return train_ds, val_ds, None
 
     msg = f"Unknown dataset: {dataset!r}"
     raise ValueError(msg)
+
+
+# ── Prototype / concept extraction (synthetic 2D only) ────────────────────────
+
+
+def _extract_prototypes(model_name: str, model: nn.Module) -> list[list[float]] | None:
+    """Return learned prototypes in input space, one row per concept."""
+    model.eval()
+    dev = next(model.parameters()).device
+    with torch.no_grad():
+        if model_name in ("topk_sae", "sae_concept"):
+            return model._decoder.weight.T.cpu().tolist()
+        if model_name == "vq_vae":
+            return model._decoder(model.codebook).cpu().tolist()
+        if model_name == "beta_vae":
+            return model._decoder.weight.T.cpu().tolist()
+        if model_name in ("vaee", "vaee_shared_encoder"):
+            K = model.num_embeddings
+            E = model.embedding_size
+            z_in = torch.zeros(K, K, E, device=dev)
+            idx = torch.arange(K, device=dev)
+            z_in[idx, idx] = model.prototypes
+            return model._decoder(z_in.flatten(start_dim=1)).cpu().tolist()
+    return None
+
+
+def _dominant_concept(
+    model_name: str, model: nn.Module, val_ds: FlatTensorDataset
+) -> list[int]:
+    """Return per-sample dominant concept index for scatter plot colouring."""
+    model.eval()
+    dev = next(model.parameters()).device
+    data = val_ds.data.to(dev)
+    with torch.no_grad():
+        if model_name in ("topk_sae", "sae_concept"):
+            return model(data).latents.argmax(dim=1).cpu().tolist()
+        if model_name == "vq_vae":
+            return model(data).indices.cpu().tolist()
+        if model_name == "beta_vae":
+            return model(data).mu.abs().argmax(dim=1).cpu().tolist()
+        if model_name in ("vaee", "vaee_shared_encoder"):
+            return model(data).alpha.argmax(dim=1).cpu().tolist()
+    return []
 
 
 # ── Config building ───────────────────────────────────────────────────────────
@@ -172,6 +222,7 @@ def _save_run(
     cfg: _BaseConfig,
     result: RunResult,
     out_dir: Path,
+    extra: dict | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -180,8 +231,11 @@ def _save_run(
     with (out_dir / "config.json").open("w") as f:
         json.dump({"model_type": model_name, "run_config": cfg_dict}, f, indent=2)
 
+    result_dict = dataclasses.asdict(result)
+    if extra:
+        result_dict.update(extra)
     with (out_dir / "results.json").open("w") as f:
-        json.dump(dataclasses.asdict(result), f, indent=2)
+        json.dump(result_dict, f, indent=2)
 
     torch.save(model.state_dict(), out_dir / "checkpoint.pt")
 
@@ -209,14 +263,27 @@ def main() -> None:
     dataset: str = raw["dataset"]
     data_path: str | None = raw.get("data_path")
     default_out = raw.get("output_dir", "experiments/dict_learning_paper/outputs")
-    out_root = Path(args.out_dir or default_out) / dataset
+    config_stem = Path(args.config).stem
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_root = Path(args.out_dir or default_out) / config_stem / timestamp
 
     print(f"Dataset : {dataset}")
     print(f"Device  : {get_device()}")
     print(f"Output  : {out_root}\n")
 
-    train_ds, val_ds = _load_dataset(dataset, data_path, raw.get("synthetic"))
+    train_ds, val_ds, gt_features = _load_dataset(dataset, data_path, raw.get("synthetic"))
     out_root.mkdir(parents=True, exist_ok=True)
+
+    if gt_features is not None:
+        with (out_root / "ground_truth.json").open("w") as f:
+            json.dump(
+                {
+                    "atoms_2d": gt_features.cpu().tolist(),
+                    "val_data_2d": val_ds.data.cpu().tolist(),
+                },
+                f,
+                indent=2,
+            )
 
     for model_name in _MODEL_ORDER:
         model_raw: dict | None = raw.get(model_name)
@@ -248,8 +315,23 @@ def main() -> None:
 
             model, result = _TRAIN_FNS[model_name](train_ds, val_ds, cfg, wandb_run)
 
+            extra: dict | None = None
+            if gt_features is not None:
+                atoms_2d = _extract_prototypes(model_name, model)
+                if atoms_2d is not None:
+                    rec = feature_recovery(
+                        torch.tensor(atoms_2d, dtype=torch.float32),
+                        gt_features.cpu(),
+                    )
+                    result.matched_fraction = rec["matched_fraction"]
+                    result.mean_cosine_sim = rec["mean_cosine_sim"]
+                extra = {
+                    "prototypes_2d": atoms_2d,
+                    "val_dominant_concept": _dominant_concept(model_name, model, val_ds),
+                }
+
             out_dir = out_root / f"{model_name}_{run_label}"
-            _save_run(model_name, model, cfg, result, out_dir)
+            _save_run(model_name, model, cfg, result, out_dir, extra)
 
             if wandb_run is not None:
                 artifact = wandb.Artifact(
@@ -260,11 +342,17 @@ def main() -> None:
                 wandb_run.log_artifact(artifact)
                 wandb_run.finish()
 
+            rec_str = (
+                f"  matched={result.matched_fraction:.2f}  cos={result.mean_cosine_sim:.3f}"
+                if result.matched_fraction is not None
+                else ""
+            )
             print(
                 f"  alive={result.alive_dict_size}"
                 f"  l0={result.best_l0:.2f}"
                 f"  mse={result.best_val_recon:.4f}"
-                f"  -> {out_dir.name}",
+                + rec_str
+                + f"  -> {out_dir.name}",
             )
 
 

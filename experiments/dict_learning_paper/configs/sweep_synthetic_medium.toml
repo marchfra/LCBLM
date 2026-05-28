@@ -35,15 +35,16 @@ min_separation = 0.628318  # π/5 radians for uniform 5-atom spacing
 [vaee]
 num_embeddings = 5
 embedding_size = 4
+beta = 1.0
 pi = [0.4]
 
 # ── VAEE (shared encoder) ─────────────────────────────────────────────────────
 # Same as vaee but without gamma — no per-concept encoder mean to regularize.
 [vaee_shared_encoder]
-num_embeddings  = 5
-embedding_size  = 4
-sparsity_param  = "pi"
-sparsity_values = [0.4]
+num_embeddings = 5
+embedding_size = 4
+beta = 1.0
+pi = [0.4]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
 # k_aux <= latent_dim is required; setting k_aux = latent_dim is the safest choice

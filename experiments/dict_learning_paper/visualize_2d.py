@@ -49,7 +49,8 @@ _N_COLS = 3
 
 
 def _load_best(run_dir: Path, model_name: str) -> dict | None:
-    candidates = sorted(run_dir.glob(f"{model_name}_*.json"))
+    # New format: model_param=val/results.json subdirectories
+    candidates = sorted(run_dir.glob(f"{model_name}_*/results.json"))
     best: dict | None = None
     best_mse = float("inf")
     for p in candidates:

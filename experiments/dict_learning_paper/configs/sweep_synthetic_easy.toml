@@ -34,7 +34,7 @@ binary_coefs = true
 [vaee]
 num_embeddings = 8
 embedding_size = 4
-beta = 32.0
+beta = 1.0
 pi = [0.125]
 
 # ── VAEE (shared encoder) ─────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ pi = [0.125]
 [vaee_shared_encoder]
 num_embeddings = 8
 embedding_size = 4
-beta = 32.0
+beta = 1.0
 pi = [0.125]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
