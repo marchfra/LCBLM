@@ -1,5 +1,6 @@
 # Dict-learning sanity check — synthetic (medium) dataset
-# 2D, 5 atoms on unit circle, k=2 active per sample, binary coefficients {0,+1}.
+# 2D, 5 atoms on unit circle (analytically spaced), k=2 active per sample,
+# binary coefficients {0,+1}.
 # Distinct sample modes: C(5,2) = 10 (sums of unordered atom pairs).
 # Hyperparameters exactly match ground truth (no overcompleteness).
 #
@@ -26,6 +27,7 @@ n_active = 2
 input_dim = 2
 noise_std = 0.05
 binary_coefs = true
+min_separation = 0.628318  # π/5 radians for uniform 5-atom spacing
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
 # num_embeddings = n_features = 5; pi = n_active / num_embeddings = 2/5.
@@ -34,6 +36,14 @@ binary_coefs = true
 num_embeddings = 5
 embedding_size = 4
 pi = [0.4]
+
+# ── VAEE (shared encoder) ─────────────────────────────────────────────────────
+# Same as vaee but without gamma — no per-concept encoder mean to regularize.
+[vaee_shared_encoder]
+num_embeddings  = 5
+embedding_size  = 4
+sparsity_param  = "pi"
+sparsity_values = [0.4]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
 # k_aux <= latent_dim is required; setting k_aux = latent_dim is the safest choice
@@ -55,6 +65,7 @@ embedding_dim = 4
 num_codes = [10]
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
+# beta = 0.1 lowered from 1.0: prior value left reconstruction loss ~0.5.
 [beta_vae]
 latent_dim = 5
 kl_warmup_epochs = 50
