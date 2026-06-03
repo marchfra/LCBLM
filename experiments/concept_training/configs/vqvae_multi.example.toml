@@ -1,0 +1,44 @@
+# VQ-VAE multi-run sweep — SST-2 / Mistral-7B
+# Copy to vqvae_multi.toml and set embeddings_path before running.
+#
+# VQ-VAE uses hard assignment: each token embedding is quantized to its nearest
+# codebook entry (L0 = 1 per sample). The codebook is trained with an explicit
+# codebook loss plus a commitment loss. Dead codes are reset to random encoder
+# outputs at the end of each epoch when reset_dead_codes = true.
+#
+# Shared fields apply to every [[runs]] entry. Per-run fields override them.
+# Required field (num_codes) goes in each [[runs]] entry.
+#
+# Usage:
+#   ct-train vq_vae experiments/concept_training/configs/vqvae_multi.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs = 3000
+lr = 1e-4
+batch_size = 2048
+seed = 42
+early_stopping_patience = 500
+early_stopping_min_delta = 0.0
+
+# ── Shared architecture defaults ──────────────────────────────────────────────
+embedding_dim = 64       # codebook entry dimension; also the encoder output dim
+commitment_weight = 0.25
+reset_dead_codes = true
+
+# wandb_project = "lcblm"
+
+# ── Per-run configurations ────────────────────────────────────────────────────
+
+[[runs]]
+num_codes = 64
+
+[[runs]]
+num_codes = 256
+
+[[runs]]
+num_codes = 1024

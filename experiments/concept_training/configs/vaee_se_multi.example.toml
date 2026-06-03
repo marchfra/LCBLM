@@ -1,0 +1,55 @@
+# VAEESharedEncoder multi-run sweep — SST-2 / Mistral-7B
+# Copy to vaee_se_multi.toml and set embeddings_path before running.
+#
+# VAEESharedEncoder uses a single shared encoder projection for gating;
+# the decoder receives gated prototypes (c_k · h_k) rather than per-concept
+# encoder means. There is no gamma (conditional-KL) term.
+#
+# Shared fields apply to every [[runs]] entry. Per-run fields override them.
+# Required fields (num_embeddings, embedding_size, pi) go in each [[runs]] entry.
+#
+# Usage:
+#   ct-train vaee_shared_encoder experiments/concept_training/configs/vaee_se_multi.toml
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+embeddings_path = "/path/to/sst2_mistral_embeddings"
+eos_token_id = 2
+n_samples = -1
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs = 3000
+lr = 1e-4
+batch_size = 2048
+seed = 42
+early_stopping_patience = 500
+early_stopping_min_delta = 0.0
+
+# ── Shared architecture defaults ──────────────────────────────────────────────
+encoder_type = "shallow"
+gumbel_temp = 0.5
+sigma_0 = 0.1
+sim_metric = "cosine"
+topology = "stacked"
+beta = 4.0
+lambda_ent = 1.0
+lambda_ortho = 0.0
+gate_mean_only = false
+
+# wandb_project = "lcblm"
+
+# ── Per-run configurations ────────────────────────────────────────────────────
+
+[[runs]]
+num_embeddings = 50
+embedding_size = 64
+pi = 0.1
+
+[[runs]]
+num_embeddings = 30
+embedding_size = 16
+pi = 0.05
+
+[[runs]]
+num_embeddings = 128
+embedding_size = 32
+pi = 0.03
