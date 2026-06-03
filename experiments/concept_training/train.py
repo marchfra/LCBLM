@@ -45,6 +45,8 @@ from lcblm.training.configs import (
     SAEParamConfig,
     TopKSAEConfig,
     VAEEConfig,
+    VAEESharedEncoderConfig,
+    VQVAEConfig,
     _BaseConfig,
 )
 from lcblm.training.data import flatten_token_dataset, load_embeddings, save_scaler
@@ -53,6 +55,8 @@ from lcblm.training.loops import (
     train_sae_param,
     train_topk_sae,
     train_vaee,
+    train_vaee_shared_encoder,
+    train_vq_vae,
 )
 from lcblm.training.models import build_ref_vaee, param_matched_latent_dim
 from lcblm.utils import get_device, set_seeds
@@ -68,13 +72,22 @@ except ModuleNotFoundError:
     import tomli as tomllib  # ty:ignore[unresolved-import]
 
 
-AnyConfig = VAEEConfig | TopKSAEConfig | SAEConceptConfig | SAEParamConfig
+AnyConfig = (
+    VAEEConfig
+    | VAEESharedEncoderConfig
+    | TopKSAEConfig
+    | SAEConceptConfig
+    | SAEParamConfig
+    | VQVAEConfig
+)
 
 _CFG_TO_MODEL_TYPE: dict[type, str] = {
     VAEEConfig: "vaee",
+    VAEESharedEncoderConfig: "vaee_shared_encoder",
     TopKSAEConfig: "topk_sae",
     SAEConceptConfig: "sae_concept",
     SAEParamConfig: "sae_param",
+    VQVAEConfig: "vq_vae",
 }
 
 
@@ -138,16 +151,20 @@ def _load_configs(
 def _auto_run_name(cfg: AnyConfig, latent_dim: int) -> str:
     if isinstance(cfg, VAEEConfig):
         return f"VAEE-{cfg.num_embeddings}x{cfg.embedding_size}"
+    if isinstance(cfg, VAEESharedEncoderConfig):
+        return f"VAEESEncoder-{cfg.num_embeddings}x{cfg.embedding_size}"
     if isinstance(cfg, TopKSAEConfig):
         return f"TopK-{cfg.k}-SAE-{latent_dim}"
     if isinstance(cfg, (SAEConceptConfig, SAEParamConfig)):
         return f"L1-{cfg.lambda_l1}-SAE-{latent_dim}"
+    if isinstance(cfg, VQVAEConfig):
+        return f"VQVAE-{cfg.num_codes}x{cfg.embedding_dim}"
     msg = f"Unknown config type: {type(cfg)}"
     raise TypeError(msg)
 
 
 def _resolve_latent_dim(cfg: AnyConfig, input_dim: int) -> int:
-    if isinstance(cfg, VAEEConfig):
+    if isinstance(cfg, (VAEEConfig, VAEESharedEncoderConfig, VQVAEConfig)):
         return 0
     if isinstance(cfg, TopKSAEConfig):
         return cfg.latent_dim if cfg.latent_dim > 0 else 4 * input_dim
@@ -236,6 +253,28 @@ def _run_one(  # noqa: PLR0913
             "embedding_size": cfg.embedding_size,
             "encoder_type": cfg.encoder_type,
             "topology": cfg.topology,
+            "best_val_recon": result.best_val_recon,
+            "best_l0": result.best_l0,
+        }
+    elif isinstance(cfg, VAEESharedEncoderConfig):
+        model, result = train_vaee_shared_encoder(train_flat, val_flat, cfg, wandb_run)
+        metadata = {
+            "model_type": model_type,
+            "input_dim": input_dim,
+            "num_embeddings": cfg.num_embeddings,
+            "embedding_size": cfg.embedding_size,
+            "encoder_type": cfg.encoder_type,
+            "topology": cfg.topology,
+            "best_val_recon": result.best_val_recon,
+            "best_l0": result.best_l0,
+        }
+    elif isinstance(cfg, VQVAEConfig):
+        model, result = train_vq_vae(train_flat, val_flat, cfg, wandb_run)
+        metadata = {
+            "model_type": model_type,
+            "input_dim": input_dim,
+            "num_codes": cfg.num_codes,
+            "embedding_dim": cfg.embedding_dim,
             "best_val_recon": result.best_val_recon,
             "best_l0": result.best_l0,
         }

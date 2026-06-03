@@ -28,25 +28,54 @@ from experiments.concept_training.model_adapter import (
     ModelAdapter,
     SparseAEAdapter,
     VAEEAdapter,
+    VAEESharedEncoderAdapter,
+    VQVAEAdapter,
     get_token_activations,
 )
 from lcblm.analysis import aggregate_to_words, build_concept_dictionary
+from lcblm.baselines.vq_vae import VQVAE
 from lcblm.sae_utils import SparseAE, TopK
 from lcblm.training.data import load_scaler, load_split
-from lcblm.vaee.models import VAEE
+from lcblm.vaee.models import VAEE, VAEESharedEncoder
 
 # ── Model loading ─────────────────────────────────────────────────────────────
 
 
 def _load_vaee(state_dict: dict, meta: dict) -> VAEE:
-    encoder_type = meta.get("encoder_type", "shallow")
     model = VAEE(
         input_dim=meta["input_dim"],
         hidden_dim=meta.get("hidden_dim", 256),
         num_embeddings=meta["num_embeddings"],
         embedding_size=meta["embedding_size"],
         output_activation=None,
-        encoder_type=encoder_type,
+        encoder_type=meta.get("encoder_type", "shallow"),
+        topology=meta.get("topology", "stacked"),
+    )
+    model.load_state_dict(state_dict)
+    model.eval()
+    return model
+
+
+def _load_vaee_shared_encoder(state_dict: dict, meta: dict) -> VAEESharedEncoder:
+    model = VAEESharedEncoder(
+        input_dim=meta["input_dim"],
+        hidden_dim=meta.get("hidden_dim", 256),
+        num_embeddings=meta["num_embeddings"],
+        embedding_size=meta["embedding_size"],
+        output_activation=None,
+        encoder_type=meta.get("encoder_type", "shallow"),
+        topology=meta.get("topology", "stacked"),
+    )
+    model.load_state_dict(state_dict)
+    model.eval()
+    return model
+
+
+def _load_vq_vae(state_dict: dict, meta: dict) -> VQVAE:
+    model = VQVAE(
+        input_dim=meta["input_dim"],
+        num_codes=meta["num_codes"],
+        embedding_dim=meta.get("embedding_dim", 64),
     )
     model.load_state_dict(state_dict)
     model.eval()
@@ -85,6 +114,10 @@ def load_adapter(ckpt_path: Path) -> ModelAdapter:
 
     if model_type == "vaee":
         return VAEEAdapter(_load_vaee(state_dict, meta))
+    if model_type == "vaee_shared_encoder":
+        return VAEESharedEncoderAdapter(_load_vaee_shared_encoder(state_dict, meta))
+    if model_type == "vq_vae":
+        return VQVAEAdapter(_load_vq_vae(state_dict, meta))
     if model_type in ("topk_sae", "sae_concept", "sae_param"):
         return SparseAEAdapter(_load_sparse_ae(state_dict, meta))
 

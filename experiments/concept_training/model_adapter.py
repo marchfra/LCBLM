@@ -21,9 +21,10 @@ import torch
 if TYPE_CHECKING:
     from torch import Tensor
 
+    from lcblm.baselines.vq_vae import VQVAE
     from lcblm.sae_utils.model import SparseAE
     from lcblm.utils.data import NextTokenDataset
-    from lcblm.vaee.models import VAEE
+    from lcblm.vaee.models import VAEE, VAEESharedEncoder
 
 
 # ── Protocol ──────────────────────────────────────────────────────────────────
@@ -82,6 +83,51 @@ class VAEEAdapter:
         return self._model.decode(z)
 
     def to(self, device: torch.device) -> VAEEAdapter:
+        self._model = self._model.to(device)
+        return self
+
+
+class VAEESharedEncoderAdapter:
+    """Adapter for VAEESharedEncoder. encode() returns gate probabilities (alpha ∈ [0, 1])."""  # noqa: E501
+
+    def __init__(self, model: VAEESharedEncoder) -> None:
+        self._model = model.eval()
+        self.n_concepts = model.num_embeddings
+        self.default_threshold = 0.5
+
+    @torch.inference_mode()
+    def encode(self, x: Tensor) -> Tensor:
+        return self._model(x).alpha
+
+    @torch.inference_mode()
+    def decode(self, z: Tensor) -> Tensor:
+        return self._model.decode(z)
+
+    def to(self, device: torch.device) -> VAEESharedEncoderAdapter:
+        self._model = self._model.to(device)
+        return self
+
+
+class VQVAEAdapter:
+    """Adapter for VQVAE. encode() returns a one-hot (B, num_codes) activation tensor."""  # noqa: E501
+
+    def __init__(self, model: VQVAE) -> None:
+        self._model = model.eval()
+        self.n_concepts = model.num_codes
+        self.default_threshold = 0.0
+
+    @torch.inference_mode()
+    def encode(self, x: Tensor) -> Tensor:
+        out = self._model(x)
+        one_hot = torch.zeros(x.shape[0], self._model.num_codes, device=x.device)
+        one_hot.scatter_(1, out.indices.unsqueeze(1), 1.0)
+        return one_hot
+
+    @torch.inference_mode()
+    def decode(self, z: Tensor) -> Tensor:
+        return self._model.decode(z)
+
+    def to(self, device: torch.device) -> VQVAEAdapter:
         self._model = self._model.to(device)
         return self
 
