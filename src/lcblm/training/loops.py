@@ -66,6 +66,11 @@ class RunResult:
     val_total: list[float] = field(default_factory=list)
     train_l0: list[float] = field(default_factory=list)
     val_l0: list[float] = field(default_factory=list)
+    # Per-model loss-term breakdown by epoch. Each entry of train_losses /
+    # val_losses is a dict keyed by the term name (e.g. cond_kl, sparsity,
+    # entropy, ortho for VAEE; aux, kl for SAE / β-VAE). One dict per epoch.
+    train_losses: list[dict[str, float]] = field(default_factory=list)
+    val_losses: list[dict[str, float]] = field(default_factory=list)
     best_val_total: float = float("inf")
     best_val_recon: float = float("inf")
     best_l0: float = float("inf")
@@ -105,6 +110,190 @@ def _compute_alive(
     return _alive_dict_size(torch.cat(parts, dim=0))
 
 
+def _reset_adam_slice(
+    optimizer: optim.Optimizer,
+    param: Tensor,
+    index: Any,
+) -> None:
+    """Zero the Adam first/second moments for a slice of ``param``.
+
+    Stops stale momentum from immediately overwriting a freshly reseeded weight
+    block. No-op if the parameter has not been stepped yet.
+    """
+    state = optimizer.state.get(param)
+    if not state:
+        return
+    for key in ("exp_avg", "exp_avg_sq"):
+        buf = state.get(key)
+        if buf is not None:
+            buf[index] = 0
+    if "step" in state:
+        # Keep the global step but the bias-correction will treat the reset
+        # moments as if fresh; leaving step as-is is the standard choice.
+        pass
+
+
+@torch.no_grad()
+def _vaee_concept_directions(model: VAEE) -> Tensor:
+    """Input-space direction each concept decodes to (prototype alone, stacked).
+
+    Returns a ``[K, input_dim]`` tensor; row ``i`` is ``decoder(onehot_i ⊗ p_i)``,
+    the same per-concept direction the feature-recovery metric matches against the
+    ground-truth atoms.
+    """
+    k, e_dim = model.num_embeddings, model.embedding_size
+    dev = model.prototypes.device
+    z = torch.zeros(k, k, e_dim, device=dev)
+    idx = torch.arange(k, device=dev)
+    z[idx, idx] = model.prototypes
+    return model._decoder(z.flatten(start_dim=1))  # noqa: SLF001
+
+
+@torch.no_grad()
+def _residual_atom_targets(
+    res: Tensor,
+    n: int,
+    covered: Tensor | None,
+    *,
+    n_iters: int = 8,
+) -> Tensor:
+    """Estimate ``n`` uncovered single-atom directions from a residual cloud.
+
+    Reviving a concept toward a single worst-residual *sample* fails: residual norm
+    grows with the number of missing atoms in that sample, so the highest-residual
+    samples are multi-atom *blends*, not clean atoms. Instead we run spherical
+    k-means on the residual directions — each recurring missing atom forms a tight
+    cluster (the other atoms in each blend are random and average out), so a
+    centroid denoises to that single atom. Already-covered concept directions are
+    added as *fixed* centroids so residual mass they explain is absorbed by them and
+    the ``n`` free centroids capture only genuinely uncovered directions.
+
+    Binary / positive-coefficient superposition (the high-dim tiers) means atoms
+    appear with a single sign, so cosine-argmax assignment is well-posed.
+
+    Returns ``[n, D]`` unit target directions.
+    """
+    dev = res.device
+    rn = F.normalize(res, dim=1)
+    res_norm = res.norm(dim=1)
+    order = torch.argsort(res_norm, descending=True)
+    pool = rn[order[: min(res.shape[0], max(16 * n, 512))]]
+
+    # Farthest-point init over the high-residual pool, avoiding covered directions.
+    if covered is not None and covered.numel():
+        max_sim = (pool @ covered.T).amax(dim=1)
+    else:
+        max_sim = torch.zeros(pool.shape[0], device=dev)
+    init: list[int] = []
+    for _ in range(n):
+        j = int(torch.argmin(max_sim).item())
+        init.append(j)
+        max_sim = torch.maximum(max_sim, pool @ pool[j])
+    centroids = pool[init].clone()  # [n, D] free centroids
+
+    fixed = covered if (covered is not None and covered.numel()) else None
+    for _ in range(n_iters):
+        allc = centroids if fixed is None else torch.cat([centroids, fixed], dim=0)
+        assign = (rn @ allc.T).argmax(dim=1)  # [N]
+        for c in range(n):
+            m = assign == c
+            if bool(m.any()):
+                centroids[c] = F.normalize(res[m].mean(dim=0), dim=0)
+    return centroids
+
+
+@torch.no_grad()
+def _resample_dead_vaee_concepts(  # noqa: PLR0913
+    model: VAEE,
+    loader: DataLoader,
+    optimizer: optim.Optimizer,
+    cfg: VAEEConfig,
+    device: torch.device,
+    *,
+    max_resample: int,
+) -> int:
+    """Reinitialise dead VAEE concepts toward under-reconstructed data directions.
+
+    A concept is *dead* if its gate fires (``c > l0_threshold``) on fewer than
+    ``cfg.resample_dead_frac`` of the samples in ``loader``. Each dead concept is
+    reseeded as a consistent (encoder-rows, prototype, decoder-block) triple that
+    fires on, and decodes to, the residual direction of a worst-reconstructed
+    sample. Adam moments for the touched slices are reset.
+
+    Returns the number of concepts resampled (0 if the encoder/decoder layout is
+    unsupported or nothing is dead).
+    """
+    enc = model.encoder_concept_linear()
+    dec = model.decoder_concept_linear()
+    if enc is None or dec is None or model.topology != "stacked":
+        return 0
+
+    k, e_dim = model.num_embeddings, model.embedding_size
+    threshold = cfg.l0_threshold
+
+    fire_counts = torch.zeros(k, device=device)
+    n_seen = 0
+    residuals: list[Tensor] = []
+    was_training = model.training
+    model.eval()
+    for batch in typed_dataloader(loader):
+        x = batch.to(device)
+        out = model(x)
+        fire_counts += (out.c > threshold).float().sum(dim=0)
+        n_seen += x.shape[0]
+        residuals.append((x - out.recon).detach())
+    if was_training:
+        model.train()
+
+    if n_seen == 0:
+        return 0
+    fire_rate = fire_counts / n_seen
+    dead = (fire_rate < cfg.resample_dead_frac).nonzero(as_tuple=True)[0].tolist()
+    if not dead:
+        return 0
+    if max_resample > 0:
+        dead = dead[:max_resample]
+
+    res = torch.cat(residuals, dim=0)  # [N, D]
+    n = min(len(dead), res.shape[0])
+    dead = dead[:n]
+
+    # Reseed toward *uncovered single-atom* directions recovered by clustering the
+    # residual cloud (see _residual_atom_targets), with the currently-alive concepts
+    # supplied as fixed centroids so revived concepts target genuinely missing atoms.
+    alive_mask = fire_rate >= cfg.resample_dead_frac
+    if bool(alive_mask.any()):
+        covered = F.normalize(
+            _vaee_concept_directions(model)[alive_mask], dim=1
+        )  # [A, D]
+    else:
+        covered = None
+    targets = _residual_atom_targets(res, n, covered)  # [n, D]
+
+    w_enc = enc.weight.data
+    b_enc = enc.bias.data if enc.bias is not None else None
+    w_dec = dec.weight.data
+    for slot, ci in enumerate(dead):
+        r = targets[slot]  # [D]
+        p = torch.randn(e_dim, device=device)  # match prototype init scale
+        rows = slice(ci * e_dim, (ci + 1) * e_dim)
+        # encoder rows: Enc_i @ r = p  ⇒  pre-activation ≈ p for x ≈ r (gate fires)
+        w_enc[rows, :] = torch.outer(p, r)
+        if b_enc is not None:
+            b_enc[rows] = 0.0
+        # decoder block: W_i @ p = r  ⇒  concept decodes to the residual direction
+        w_dec[:, rows] = torch.outer(r, p) / p.dot(p).clamp(min=1e-8)
+        model.prototypes.data[ci] = p
+
+        _reset_adam_slice(optimizer, enc.weight, rows)
+        if enc.bias is not None:
+            _reset_adam_slice(optimizer, enc.bias, rows)
+        _reset_adam_slice(optimizer, dec.weight, (slice(None), rows))
+        _reset_adam_slice(optimizer, model.prototypes, ci)
+
+    return len(dead)
+
+
 # ── Training loops ────────────────────────────────────────────────────────────
 
 
@@ -123,6 +312,11 @@ def train_vaee(  # noqa: PLR0915
     best_state: dict | None = None
 
     for epoch in trange(cfg.epochs, desc="VAEE", unit="epoch"):
+        lambda_ent_eff = (
+            cfg.lambda_ent * min(1.0, (epoch + 1) / cfg.lambda_ent_warmup_epochs)
+            if cfg.lambda_ent_warmup_epochs > 0
+            else cfg.lambda_ent
+        )
         model.train()
         epoch_terms: dict[str, float] = {
             "total": 0.0,
@@ -150,7 +344,7 @@ def train_vaee(  # noqa: PLR0915
                 pi=cfg.pi,
                 gamma=cfg.gamma,
                 beta=cfg.beta,
-                lambda_ent=cfg.lambda_ent,
+                lambda_ent=lambda_ent_eff,
                 lambda_ortho=cfg.lambda_ortho,
                 decoder_weight=decoder_weight,
                 num_embeddings=model.num_embeddings,
@@ -196,7 +390,7 @@ def train_vaee(  # noqa: PLR0915
                     pi=cfg.pi,
                     gamma=cfg.gamma,
                     beta=cfg.beta,
-                    lambda_ent=cfg.lambda_ent,
+                    lambda_ent=lambda_ent_eff,
                     lambda_ortho=cfg.lambda_ortho,
                     decoder_weight=(
                         model.decoder_first_weight()
@@ -243,7 +437,11 @@ def train_vaee(  # noqa: PLR0915
                 step=epoch + 1,
             )
 
-        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+        in_warmup = (epoch + 1) <= cfg.lambda_ent_warmup_epochs
+        if (
+            not in_warmup
+            and val_total < result.best_val_total - cfg.early_stopping_min_delta
+        ):
             result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
@@ -258,13 +456,31 @@ def train_vaee(  # noqa: PLR0915
                         "best_l0": result.best_l0,
                     },
                 )
-        elif _early_stop(
+        elif not in_warmup and _early_stop(
             result.val_total,
             cfg.early_stopping_patience,
             cfg.early_stopping_min_delta,
         ):
             print(f"   Early stopping at epoch {epoch + 1}")
             break
+
+        if (
+            cfg.resample_dead
+            and (epoch + 1) % cfg.resample_every == 0
+            and (epoch + 1) <= cfg.epochs * cfg.resample_stop_frac
+        ):
+            n_res = _resample_dead_vaee_concepts(
+                model,
+                train_loader,
+                optimizer,
+                cfg,
+                cfg.device,
+                max_resample=cfg.resample_max_per_step,
+            )
+            if n_res:
+                print(f"   Resampled {n_res} dead concept(s) at epoch {epoch + 1}")
+                if wandb_run is not None:
+                    wandb_run.log({"train/vaee_resampled": n_res}, step=epoch + 1)
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -294,6 +510,11 @@ def train_vaee_shared_encoder(  # noqa: PLR0915
     best_state: dict | None = None
 
     for epoch in trange(cfg.epochs, desc="VAEESharedEncoder", unit="epoch"):
+        lambda_ent_eff = (
+            cfg.lambda_ent * min(1.0, (epoch + 1) / cfg.lambda_ent_warmup_epochs)
+            if cfg.lambda_ent_warmup_epochs > 0
+            else cfg.lambda_ent
+        )
         model.train()
         epoch_terms: dict[str, float] = {
             "total": 0.0,
@@ -318,7 +539,7 @@ def train_vaee_shared_encoder(  # noqa: PLR0915
                 alpha=out.alpha,
                 pi=cfg.pi,
                 beta=cfg.beta,
-                lambda_ent=cfg.lambda_ent,
+                lambda_ent=lambda_ent_eff,
                 lambda_ortho=cfg.lambda_ortho,
                 decoder_weight=decoder_weight,
                 num_embeddings=model.num_embeddings,
@@ -361,7 +582,7 @@ def train_vaee_shared_encoder(  # noqa: PLR0915
                     alpha=out.alpha,
                     pi=cfg.pi,
                     beta=cfg.beta,
-                    lambda_ent=cfg.lambda_ent,
+                    lambda_ent=lambda_ent_eff,
                     lambda_ortho=cfg.lambda_ortho,
                     decoder_weight=(
                         model.decoder_first_weight()
@@ -408,7 +629,11 @@ def train_vaee_shared_encoder(  # noqa: PLR0915
                 step=epoch + 1,
             )
 
-        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+        in_warmup = (epoch + 1) <= cfg.lambda_ent_warmup_epochs
+        if (
+            not in_warmup
+            and val_total < result.best_val_total - cfg.early_stopping_min_delta
+        ):
             result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
@@ -423,7 +648,7 @@ def train_vaee_shared_encoder(  # noqa: PLR0915
                         "best_l0": result.best_l0,
                     },
                 )
-        elif _early_stop(
+        elif not in_warmup and _early_stop(
             result.val_total,
             cfg.early_stopping_patience,
             cfg.early_stopping_min_delta,
@@ -938,7 +1163,11 @@ def train_beta_vae(  # noqa: PLR0915
                 step=epoch + 1,
             )
 
-        if val_total < result.best_val_total - cfg.early_stopping_min_delta:
+        in_warmup = (epoch + 1) <= cfg.kl_warmup_epochs
+        if (
+            not in_warmup
+            and val_total < result.best_val_total - cfg.early_stopping_min_delta
+        ):
             result.best_val_total = val_total
             result.best_val_recon = val_recon
             result.best_l0 = result.val_l0[-1]
@@ -953,7 +1182,7 @@ def train_beta_vae(  # noqa: PLR0915
                         "best_l0": result.best_l0,
                     },
                 )
-        elif _early_stop(
+        elif not in_warmup and _early_stop(
             result.val_total,
             cfg.early_stopping_patience,
             cfg.early_stopping_min_delta,

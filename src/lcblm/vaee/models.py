@@ -195,6 +195,31 @@ class VAEE(nn.Module):
             return first.linear1.weight
         return first.weight
 
+    def encoder_concept_linear(self) -> nn.Linear | None:
+        """Return the encoder Linear whose rows partition into per-concept blocks.
+
+        Only well-defined for the ``linear`` and ``shallow`` encoders, where a single
+        ``Linear(input_dim, K*E)`` produces ``mu``; its rows ``[i*E:(i+1)*E]`` are the
+        weights producing concept ``i``'s encoder mean. Returns ``None`` for the ``mlp``
+        encoder (no clean per-concept row partition), which disables dead-concept
+        resampling for that encoder type.
+        """
+        enc = self._encoder
+        if isinstance(enc, nn.Linear):
+            return enc
+        if isinstance(enc, nn.Sequential) and isinstance(enc[0], nn.Linear):
+            return enc[0]
+        return None
+
+    def decoder_concept_linear(self) -> nn.Linear | None:
+        """Return the decoder's first Linear if its columns partition into blocks.
+
+        Columns ``[i*E:(i+1)*E]`` of the returned weight form concept ``i``'s decoder
+        block. Returns ``None`` for the MLP decoder.
+        """
+        first = self._decoder[0]
+        return first if isinstance(first, nn.Linear) else None
+
     def forward(self, x: Tensor) -> Output:
         mu = self._encoder(x).reshape(-1, self.num_embeddings, self.embedding_size)
         logits = self._compute_logits(mu)
@@ -222,9 +247,9 @@ class VAEESharedEncoder(nn.Module):
 
     class Output(NamedTuple):
         recon: Tensor
-        alpha: Tensor       # (B, K)
-        c: Tensor           # (B, K) — soft at train, continuous at eval
-        e: Tensor           # (B, d) — shared projection
+        alpha: Tensor  # (B, K)
+        c: Tensor  # (B, K) — soft at train, continuous at eval
+        e: Tensor  # (B, d) — shared projection
 
     def __init__(  # noqa: PLR0913
         self,
@@ -269,7 +294,9 @@ class VAEESharedEncoder(nn.Module):
 
         # Encoder outputs a single d-dim vector (not K*d)
         enc_out = embedding_size
-        dec_in = num_embeddings * embedding_size if topology == "stacked" else embedding_size
+        dec_in = (
+            num_embeddings * embedding_size if topology == "stacked" else embedding_size
+        )
 
         match encoder_type:
             case "mlp":
@@ -326,9 +353,7 @@ class VAEESharedEncoder(nn.Module):
                 sim = torch.einsum("be,ke->bk", e, self.prototypes)
                 return sim * scale
             case "neg_euclidean":
-                dist = torch.norm(
-                    e.unsqueeze(1) - self.prototypes.unsqueeze(0), dim=-1
-                )
+                dist = torch.norm(e.unsqueeze(1) - self.prototypes.unsqueeze(0), dim=-1)
                 return (self._neg_euc_bias - dist) * scale
             case _:
                 msg = f"Unknown sim_metric: {self.sim_metric!r}"
@@ -369,8 +394,8 @@ class VAEESharedEncoder(nn.Module):
         return first.weight  # type: ignore[return-value]
 
     def forward(self, x: Tensor) -> Output:
-        e = self._encoder(x)                    # (B, d)
-        logits = self._compute_logits(e)        # (B, K)
+        e = self._encoder(x)  # (B, d)
+        logits = self._compute_logits(e)  # (B, K)
         alpha = torch.sigmoid(logits)
         z, c = self.sample(logits, alpha)
         recon = self.decode(z)
@@ -614,10 +639,12 @@ def compute_loss_shared_encoder(  # noqa: PLR0913
     term_2 = (1 - mean_alpha) * torch.log((1 - mean_alpha) / (1 - pi))
     sparsity_loss = beta * (term_1 + term_2).mean()
 
-    entropy_loss = lambda_ent * (
-        -alpha * torch.log(alpha + 1e-8)
-        - (1 - alpha) * torch.log(1 - alpha + 1e-8)
-    ).mean()
+    entropy_loss = (
+        lambda_ent
+        * (
+            -alpha * torch.log(alpha + 1e-8) - (1 - alpha) * torch.log(1 - alpha + 1e-8)
+        ).mean()
+    )
 
     if lambda_ortho > 0 and decoder_weight is not None:
         n_pairs = num_embeddings * (num_embeddings - 1) / 2
