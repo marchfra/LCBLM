@@ -1,5 +1,17 @@
-# Dict-learning Pareto sweep — synthetic (hard) dataset
-# Full 256-dim sparse-superposition benchmark with ±1 coefficients.
+# Dict-learning sanity check — synthetic (hard) dataset
+# 2D, 5 atoms on unit circle (analytically spaced), independent Bernoulli
+# activation (active_prob=0.5) with the adjacent-only constraint, and
+# CONTINUOUS per-sample coefficients c_i ~ Uniform(0.5, 1.5), noise_std=0.05.
+#
+# Same support recipe as the medium tier — the difference is the coefficients:
+# medium uses binary {0,+1}, hard uses continuous per-sample magnitudes. This is
+# the per-sample-magnitude axis: each active atom appears at a sample-specific
+# strength. Only a per-sample encoder can reconstruct that exactly.
+#   - VAEE (standard): z = gate * mu_i(x); mu_i(x) carries c_i -> recovery + low MSE
+#   - VAEE-SE: fixed prototype -> recovers atom DIRECTION but hits a magnitude
+#     reconstruction floor (good recovery, elevated MSE)
+#   - SAEs: span the plane (low MSE) on a non-atomic basis (recovery stuck)
+#   - VQ-VAE: single code per sample -> cannot represent superposition
 #
 # Usage:
 #   dl-sweep --config experiments/dict_learning_paper/configs/sweep_synthetic_hard.toml
@@ -9,38 +21,80 @@ wandb_project = "dict-learning-paper"
 # ── Dataset ───────────────────────────────────────────────────────────────────
 dataset = "synthetic"
 output_dir = "experiments/dict_learning_paper/outputs"
-# data_path is not needed for synthetic
 
 # ── Shared training settings ──────────────────────────────────────────────────
 epochs = 1000
 lr = 1e-4
-batch_size = 512
-early_stopping_patience = 200
+batch_size = 256
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 5
+input_dim = 2
+noise_std = 0.05
+binary_coefs = true
+active_prob = 0.5
+adjacent_only = true
+coef_range = [0.5, 1.5]  # continuous per-sample magnitudes
+min_separation = 0.628318  # π/5 radians for uniform 5-atom spacing
 
 # ── VAEE ──────────────────────────────────────────────────────────────────────
-# pi = target_l0 / num_embeddings → [4/64, 8/64, 16/64] matches TopK k=[4,8,16]
+# Medium winning recipe (beta=1, lambda_ortho=2, lambda_ent=0, gumbel_temp=0.5,
+# sim_metric=inner_product). pi=0.3 = marginal per-atom activation
+# (E[k]=1.5 over 5 atoms) — correctly-specified gate prior. Sweep
+# embedding_size=[2,4] to test whether the per-sample encoder (mu_i(x)) helps.
 [vaee]
-num_embeddings = 64
-embedding_size = 16
-pi = [0.0625, 0.125, 0.25]
+num_embeddings = 5
+beta = 1.0
+pi = 0.3
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+embedding_size = [2, 4]
+
+# ── VAEE (shared encoder) ─────────────────────────────────────────────────────
+# Same recipe as VAEE; sweep embedding_size=[2,4] in parallel.
+[vaee_shared_encoder]
+num_embeddings = 5
+beta = 1.0
+pi = 0.3
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+embedding_size = [2, 4]
 
 # ── TopK-SAE ──────────────────────────────────────────────────────────────────
+# Fixed k cannot match the variable support: k=1 captures the ~50% singletons
+# but misses adjacent pairs; k=2 over-fires on singletons. Sweep both to show
+# the gap.
 [topk_sae]
-k = [4, 8, 16]
+latent_dim = 5
+k_aux = 5
+k = [1, 2]
 
 # ── L1-SAE ────────────────────────────────────────────────────────────────────
+# Soft threshold adapts per sample; two points bracket the useful range.
 [sae_concept]
-vaee_num_embeddings = 64
-lambda_l1 = [1.0, 5.0, 10.0]
+vaee_num_embeddings = 5
+lambda_l1 = [0.1, 0.3]
 
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────
-# Higher patience because dead-code resets cause val loss to fluctuate early on.
+# num_codes=5 (= n_atoms, fair comparison) and num_codes=10 (= the 10 valid
+# modes: 5 singletons + 5 adjacent pairs). A single code per sample cannot
+# represent superposition without memorising modes.
 [vq_vae]
-num_codes = [64, 128, 256]
+embedding_dim = 4
+num_codes = [5, 10]
 
 # ── β-VAE ─────────────────────────────────────────────────────────────────────
-# KL warmup prevents posterior collapse; lower β range keeps reconstruction usable.
+# latent_dim=5 matches n_features. KL warmup avoids posterior collapse on this
+# low-dim noisy data. Sweep beta=[0.5, 1.0].
 [beta_vae]
-latent_dim = 64
-kl_warmup_epochs = 10
-beta = [1e-4, 1e-3, 1e-2]
+latent_dim = 5
+kl_warmup_epochs = 50
+beta = [0.5, 1.0]

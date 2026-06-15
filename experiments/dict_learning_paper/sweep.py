@@ -68,7 +68,14 @@ _TRAIN_FNS: dict[str, Callable[..., tuple[nn.Module, RunResult]]] = {
 }
 
 # Canonical order; models absent from the TOML are silently skipped.
-_MODEL_ORDER = ("vaee", "vaee_shared_encoder", "topk_sae", "sae_concept", "vq_vae", "beta_vae")
+_MODEL_ORDER = (
+    "vaee",
+    "vaee_shared_encoder",
+    "topk_sae",
+    "sae_concept",
+    "vq_vae",
+    "beta_vae",
+)
 
 # _BaseConfig fields that may appear in the TOML; 'device' is excluded because
 # it is resolved automatically via the field's default_factory (get_device).
@@ -96,7 +103,11 @@ def _load_dataset(
         full, features = make_synthetic(**(synthetic_cfg or {}))
         n = len(full)
         cut = int(0.8 * n)
-        return FlatTensorDataset(full.data[:cut]), FlatTensorDataset(full.data[cut:]), features
+        return (
+            FlatTensorDataset(full.data[:cut]),
+            FlatTensorDataset(full.data[cut:]),
+            features,
+        )
 
     if data_path is None:
         msg = "data_path is required for all datasets other than 'synthetic'"
@@ -156,6 +167,68 @@ def _dominant_concept(
         if model_name in ("vaee", "vaee_shared_encoder"):
             return model(data).alpha.argmax(dim=1).cpu().tolist()
     return []
+
+
+def _concept_weights(
+    model_name: str, model: nn.Module, val_ds: FlatTensorDataset
+) -> list[list[float]]:
+    """Per-sample, per-concept activation weights (``alpha``) for colour blending.
+
+    Returns an ``[N, K]`` matrix of non-negative weights so the 2D plot can colour
+    each point as a weighted sum of its active concepts' colours. Uses the same
+    per-model activation that drives ``_dominant_concept`` (VAEE gates, SAE latents,
+    one-hot codes for VQ-VAE, ``|mu|`` for β-VAE).
+    """
+    model.eval()
+    dev = next(model.parameters()).device
+    data = val_ds.data.to(dev)
+    with torch.no_grad():
+        if model_name in ("topk_sae", "sae_concept"):
+            w = model(data).latents.clamp(min=0.0)
+        elif model_name == "vq_vae":
+            idx = model(data).indices
+            k = model.codebook.shape[0]
+            w = torch.zeros(idx.shape[0], k, device=dev)
+            w[torch.arange(idx.shape[0], device=dev), idx] = 1.0
+        elif model_name == "beta_vae":
+            w = model(data).mu.abs()
+        elif model_name in ("vaee", "vaee_shared_encoder"):
+            w = model(data).alpha
+        else:
+            return []
+    return w.cpu().tolist()
+
+
+def _alive_concepts(
+    model_name: str, model: nn.Module, val_ds: FlatTensorDataset, threshold: float
+) -> list[int]:
+    """Concept indices that fire on >= 0.1% of val samples.
+
+    Mirrors the per-model activation extraction used by ``alive_dict_size`` so the
+    2D plot draws an arrow for every concept the metric counts as alive — not only
+    those that win the per-sample argmax (which undercounts VAEE's independent gates).
+    """
+    model.eval()
+    dev = next(model.parameters()).device
+    data = val_ds.data.to(dev)
+    with torch.no_grad():
+        if model_name in ("topk_sae", "sae_concept"):
+            fired = model(data).latents > 0
+        elif model_name == "vq_vae":
+            idx = model(data).indices
+            k = model.codebook.shape[0]
+            fired = torch.zeros(idx.shape[0], k, dtype=torch.bool, device=dev)
+            fired[torch.arange(idx.shape[0], device=dev), idx] = True
+        elif model_name == "beta_vae":
+            fired = model(data).mu.abs() > threshold
+        elif model_name in ("vaee", "vaee_shared_encoder"):
+            fired = model(data).c > threshold
+        else:
+            return []
+    n = fired.shape[0]
+    fire_counts = fired.float().sum(0)  # [K]
+    alive = (fire_counts >= 0.001 * n).nonzero(as_tuple=True)[0]
+    return alive.cpu().tolist()
 
 
 # ── Config building ───────────────────────────────────────────────────────────
@@ -255,10 +328,32 @@ def main() -> None:
         default=None,
         help="Override output root directory (default: value from TOML or outputs/).",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Override the top-level batch_size and tag the output dir (for ablations).",
+    )
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=None,
+        metavar="MODEL",
+        help=f"Restrict the sweep to these model sections (choices: {', '.join(_MODEL_ORDER)}).",
+    )
     args = parser.parse_args()
+
+    if args.models is not None:
+        unknown = [m for m in args.models if m not in _MODEL_ORDER]
+        if unknown:
+            msg = f"Unknown model(s): {unknown}. Choose from {list(_MODEL_ORDER)}."
+            raise SystemExit(msg)
 
     with Path(args.config).open("rb") as f:
         raw = tomllib.load(f)
+
+    if args.batch_size is not None:
+        raw["batch_size"] = args.batch_size
 
     dataset: str = raw["dataset"]
     data_path: str | None = raw.get("data_path")
@@ -271,7 +366,9 @@ def main() -> None:
     print(f"Device  : {get_device()}")
     print(f"Output  : {out_root}\n")
 
-    train_ds, val_ds, gt_features = _load_dataset(dataset, data_path, raw.get("synthetic"))
+    train_ds, val_ds, gt_features = _load_dataset(
+        dataset, data_path, raw.get("synthetic")
+    )
     out_root.mkdir(parents=True, exist_ok=True)
 
     if gt_features is not None:
@@ -286,6 +383,8 @@ def main() -> None:
             )
 
     for model_name in _MODEL_ORDER:
+        if args.models is not None and model_name not in args.models:
+            continue
         model_raw: dict | None = raw.get(model_name)
         if model_raw is None:
             continue
@@ -322,12 +421,19 @@ def main() -> None:
                     rec = feature_recovery(
                         torch.tensor(atoms_2d, dtype=torch.float32),
                         gt_features.cpu(),
+                        threshold=float(raw.get("recovery_threshold", 0.9)),
                     )
                     result.matched_fraction = rec["matched_fraction"]
                     result.mean_cosine_sim = rec["mean_cosine_sim"]
                 extra = {
                     "prototypes_2d": atoms_2d,
-                    "val_dominant_concept": _dominant_concept(model_name, model, val_ds),
+                    "val_dominant_concept": _dominant_concept(
+                        model_name, model, val_ds
+                    ),
+                    "val_concept_weights": _concept_weights(model_name, model, val_ds),
+                    "alive_concepts": _alive_concepts(
+                        model_name, model, val_ds, getattr(cfg, "l0_threshold", 0.0)
+                    ),
                 }
 
             out_dir = out_root / f"{model_name}_{run_label}"
@@ -350,9 +456,7 @@ def main() -> None:
             print(
                 f"  alive={result.alive_dict_size}"
                 f"  l0={result.best_l0:.2f}"
-                f"  mse={result.best_val_recon:.4f}"
-                + rec_str
-                + f"  -> {out_dir.name}",
+                f"  mse={result.best_val_recon:.4f}" + rec_str + f"  -> {out_dir.name}",
             )
 
 

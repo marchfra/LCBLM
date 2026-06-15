@@ -21,13 +21,40 @@ def make_synthetic(  # noqa: PLR0913
     *,
     binary_coefs: bool = False,
     min_separation: float | None = None,
+    active_prob: float | None = None,
+    adjacent_only: bool = False,
+    coef_range: tuple[float, float] | None = None,
 ) -> tuple[FlatTensorDataset, Tensor]:
     """Sparse superposition benchmark.
 
-    Each sample is a sum of n_active ground-truth feature vectors with random
-    coefficients drawn from {-1, +1} (default) or {+1} when binary_coefs=True,
-    plus Gaussian noise.  Returns the dataset and the ground-truth feature
-    matrix (needed for feature_recovery evaluation).
+    Each sample is a sum of active ground-truth feature vectors with random
+    coefficients, plus Gaussian noise.  Returns the dataset and the ground-truth
+    feature matrix (needed for feature_recovery evaluation).
+
+    Coefficient model (the magnitude of each active atom):
+    - coef_range set (e.g. (0.5, 1.5)): per-sample continuous magnitudes drawn
+      from Uniform(low, high). This is the per-sample-magnitude regime — only a
+      per-sample encoder can reconstruct it exactly; a fixed prototype recovers
+      the atom direction but hits a magnitude-induced reconstruction floor.
+      Overrides binary_coefs.
+    - binary_coefs=True: coefficients are +1 on the support.
+    - binary_coefs=False (default): coefficients are {-1, +1} on the support.
+
+    Support model (which atoms are active per sample):
+    - active_prob is None (default): exactly n_active atoms active per sample,
+      chosen uniformly at random.
+    - active_prob set: each atom is active independently with this probability
+      (the canonical superposition model). The per-sample count then varies
+      (Binomial(n_features, active_prob)); empty draws (k=0) are resampled so
+      every sample has at least one active atom. n_active is ignored.
+
+    adjacent_only (requires active_prob and input_dim==2): forbid co-activating
+    atoms that are not neighbours on the unit circle. This restricts the support
+    to singletons and ring-adjacent pairs (it caps k<=2, since on a circular
+    layout any triple contains a non-adjacent pair). It removes the near-origin
+    "fold-back" clusters that wide-angle pairs would otherwise produce, encoding
+    a structured-sparsity prior where distant atoms never co-occur. With this
+    constraint the fraction of adjacent-pair samples equals active_prob.
 
     min_separation: minimum angular separation (radians) between any two atoms.
     Defaults to π/n_features.  For input_dim == 2, atoms are placed at exact
@@ -36,6 +63,10 @@ def make_synthetic(  # noqa: PLR0913
     after _MAX_ATOM_ATTEMPTS tries.
     """
     rng = torch.Generator().manual_seed(seed)
+
+    if adjacent_only and (active_prob is None or input_dim != 2):
+        msg = "adjacent_only requires active_prob to be set and input_dim == 2"
+        raise ValueError(msg)
 
     if min_separation is None:
         min_separation = math.pi / n_features
@@ -71,19 +102,51 @@ def make_synthetic(  # noqa: PLR0913
                 )
                 features[i] = candidate  # noqa: F821  (assigned in loop body above)
 
-    # Vectorised: for each sample, random-shuffle feature indices and take first
-    # n_active.
-    rand_vals = torch.rand(n_samples, n_features, generator=rng)
-    indices = rand_vals.argsort(dim=1)[:, :n_active]  # [N, n_active]
-
-    if binary_coefs:
-        coefs = torch.ones(n_samples, n_active)
+    # Build the [N, n_features] support mask of active atoms per sample.
+    if active_prob is None:
+        # Exactly n_active atoms active per sample (uniform choice).
+        rand_vals = torch.rand(n_samples, n_features, generator=rng)
+        indices = rand_vals.argsort(dim=1)[:, :n_active]  # [N, n_active]
+        mask = torch.zeros(n_samples, n_features)
+        mask.scatter_(1, indices, 1.0)
     else:
-        coefs = (
-            torch.randint(0, 2, (n_samples, n_active), generator=rng).float() * 2 - 1
+        # Independent Bernoulli activation; resample invalid draws.  A draw is
+        # invalid if it is empty (k=0) or, when adjacent_only, if its support is
+        # not a singleton or a ring-adjacent pair.
+        def _invalid(m: Tensor) -> Tensor:
+            k = m.sum(dim=1)
+            if not adjacent_only:
+                return k == 0
+            # Ring-adjacent active count: position i counts when i and i-1 are
+            # both active (wraps around via roll).
+            adj = (m * m.roll(1, dims=1)).sum(dim=1)
+            valid = (k == 1) | ((k == 2) & (adj == 1))
+            return ~valid
+
+        mask = (torch.rand(n_samples, n_features, generator=rng) < active_prob).float()
+        invalid = _invalid(mask)
+        while bool(invalid.any()):
+            n_inv = int(invalid.sum())
+            mask[invalid] = (
+                torch.rand(n_inv, n_features, generator=rng) < active_prob
+            ).float()
+            invalid = _invalid(mask)
+
+    # Coefficients over the support mask: continuous Uniform magnitudes
+    # (coef_range), {0,+1} (binary), or {-1,0,+1} (signed).
+    if coef_range is not None:
+        low, high = coef_range
+        mags = torch.rand(n_samples, n_features, generator=rng) * (high - low) + low
+        coefs = mask * mags
+    elif binary_coefs:
+        coefs = mask
+    else:
+        signs = (
+            torch.randint(0, 2, (n_samples, n_features), generator=rng).float() * 2 - 1
         )
-    selected = features[indices]  # [N, n_active, input_dim]
-    data = (coefs.unsqueeze(-1) * selected).sum(dim=1)  # [N, input_dim]
+        coefs = mask * signs
+
+    data = coefs @ features  # [N, input_dim]
     data = data + torch.randn(n_samples, input_dim, generator=rng) * noise_std
 
     return FlatTensorDataset(data.float()), features
