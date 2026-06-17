@@ -301,6 +301,8 @@ def _score_all(
     ppl_lm.eval()
     ppl_tokenizer = AutoTokenizer.from_pretrained(ppl_model_id)
     ppl_tokenizer.pad_token = ppl_tokenizer.eos_token
+    if not ppl_tokenizer.bos_token:
+        ppl_tokenizer.add_special_tokens({"bos_token": "<s>"})
 
     ppls: dict[str, float] = {}
     for config_name, texts_file in configs:
