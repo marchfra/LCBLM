@@ -304,7 +304,7 @@ def _score_all(
 
     ppls: dict[str, float] = {}
     for config_name, texts_file in configs:
-        print(f"\n[{config_name}] computing perplexity …")
+        print(f"\n[{config_name}] computing perplexity...")
         with texts_file.open() as f:
             texts: list[str] = json.load(f)
         ppls[config_name] = _compute_perplexity(
