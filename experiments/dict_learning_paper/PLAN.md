@@ -29,7 +29,7 @@ If these five are acknowledged, the workshop paper is achievable in 4 weeks with
 
 | Dataset | Role | Input | Dim | Why tractable in pixel space |
 |---|---|---|---|---|
-| **Synthetic superposition** (Anthropic-style: known sparse features in high-d Gaussian) | Ground-truth feature recovery | Raw vector | 256 (configurable) | Vector data by construction |
+| **Synthetic superposition** (Anthropic-style: known sparse features in high-d Gaussian) | Ground-truth feature recovery | Raw vector | 256 (configurable) | Vector data by construction <span style="color:red">— realised as **easy / medium / hard** tiers: 2D 8-atom (k=1), 2D 5-atom (k=2), and the 256-d benchmark; analytical uniform 2D atom spacing + binary {0,1} coefficients</span> |
 | **MNIST** | Cheap sanity check; concepts have clear visual identity (strokes, digits) | Raw pixels, flattened | 784 | Low-dim grayscale, near-binary |
 | **Fashion-MNIST** | Step up from MNIST; clothing categories have richer structure but stay in the same dim | Raw pixels, flattened | 784 | Same dim/format as MNIST, harder content |
 | **dSprites** | Disentanglement benchmark with **5 ground-truth factors** (shape, scale, rotation, x, y) | Raw pixels, flattened | 4096 (64×64 binary) | Binary geometric shapes — pixel-space MSE works cleanly despite higher dim |
@@ -42,7 +42,7 @@ If these five are acknowledged, the workshop paper is achievable in 4 weeks with
 **Alternative if user prefers only 3 datasets:** Drop Fashion-MNIST → synthetic + MNIST + dSprites is a defensible workshop scope (ground-truth synthetic, visual sanity check, disentanglement headline). Slightly thinner empirical evidence; significantly less to write up. Marked as a fallback if Fashion-MNIST adds little signal in week 3.
 
 **Compute envelope** (revised for 1-month timeline):
-- 5 models × 3 sparsity points × 4 datasets = 60 runs.
+- 5 models <span style="color:red">(6 incl. the VAEE shared-encoder variant)</span> × 3 sparsity points × 4 datasets = 60 runs.
 - MNIST + Fashion-MNIST + synthetic runs are minutes each → <1 GPU-day for 45 of the 60 runs.
 - dSprites runs are ~1-2 hours each → ~1-2 GPU-days for the 15 dSprites runs.
 - ResNet feature extraction for intervention metric: <1 hour, done once on validation sets only.
@@ -60,6 +60,8 @@ If these five are acknowledged, the workshop paper is achievable in 4 weeks with
 | **VQ-VAE** | The natural "discrete-codebook" comparison; tests whether soft Gumbel-Sigmoid beats hard quantization. **Wrapped without its native conv enc/dec** — VQ codebook applied directly to raw pixels (consistent with VAEE/SAE setup). Note this in the paper as the head-to-head-fair variant. |
 | **β-VAE** | The "continuous-latent VAE" comparison; tests whether discreteness via gates matters at all |
 
+<span style="color:red">Alongside standard VAEE, a **VAEE shared-encoder** variant (single shared encoder, no per-concept μ/γ term) is trained as a sixth model trace, to isolate the effect of the per-concept encoder mean.</span>
+
 **Deferred** (mention in related work, don't implement): JumpReLU, BatchTopK, Matryoshka SAE, FactorVAE, Gated SAE. If 2 weeks of buffer appear, add JumpReLU-SAE; otherwise leave them.
 
 ## Metrics
@@ -76,7 +78,7 @@ If these five are acknowledged, the workshop paper is achievable in 4 weeks with
 | 6 | **Intervention consistency in ResNet feature space** (mean cosine similarity of gate-flip directions across N=256 validation inputs, in frozen ResNet-50 features) | Controlled sampling / interpretable intervention | All 3 image datasets | New: `eval/intervention.py:consistency_resnet` |
 | 7 | **Intervention-based factor recovery (dSprites)** — *causal* counterpart to MIG. For each concept g and each factor f ∈ {shape, scale, rotation, x, y}, intervene on g across N inputs, decode, and measure the induced change in f (via direct pixel comparison or a small pretrained factor regressor on dSprites). Report: per-concept dominant factor + dominance ratio (how much the strongest factor changes vs others). Companion *qualitative* artifact: a grid showing intervention before/after with the corresponding factor annotated. **Doubles as an in-distribution-preservation check**: if interventions take the recon OOD, the factor regressor reads noise and dominance ratios collapse — high scores on this metric inherently certify that the model's interventions stay on the data manifold. | Causal feature recovery + in-distribution preservation (a single metric covers both) | dSprites | New: `eval/intervention.py:factor_recovery_dsprites` |
 
-**Headline figure:** L0-MSE Pareto curves per dataset (5 model traces). Pareto sweeps come from varying the sparsity hyperparameter per model (π for VAEE, k for TopK-SAE, λ for L1-SAE, β for β-VAE, codebook size for VQ-VAE). **3 sparsity points per model per dataset** (compressed from 5 for the 1-month timeline; can expand to 5 in a v2 / camera-ready if time allows).
+**Headline figure:** L0-MSE Pareto curves per dataset (5 model traces <span style="color:red">+ the VAEE shared-encoder variant</span>). Pareto sweeps come from varying the sparsity hyperparameter per model (π for VAEE <span style="color:red">and shared-encoder VAEE</span>, k for TopK-SAE, λ for L1-SAE, β for β-VAE, codebook size for VQ-VAE). **3 sparsity points per model per dataset** (compressed from 5 for the 1-month timeline; can expand to 5 in a v2 / camera-ready if time allows).
 
 **Sanity checks (single-line claims, not headline metrics):**
 - **Feature recovery on synthetic** — verify VAEE and VQ-VAE recover ground-truth features at >0.9 cosine similarity (Hungarian matching). One line in results: "Method works as intended on a controlled benchmark." Detail goes in appendix.
@@ -85,6 +87,8 @@ If these five are acknowledged, the workshop paper is achievable in 4 weeks with
 **Qualitative artifacts** (all datasets):
 - Concept dictionary HTML via `ct-cd` (top-K activating samples per concept)
 - Latent traversal grids (pairs visually with the intervention-consistency metric — same concept flips, before/after image)
+- <span style="color:red">2D qualitative-analysis plot (`visualize_2d.py`): val-data scatter coloured by dominant concept, with an arrow to each *alive* prototype direction (synthetic 2D tiers).</span>
+- <span style="color:red">Learning-curve plots (`plot_curves.py`): per-sweep L0 and reconstruction vs. epoch.</span>
 
 **ResNet usage caveat** (must be stated clearly in the paper): The frozen ResNet-50 is used only in metric #6 (intervention consistency in semantic space) as an evaluation yardstick. It is *not* part of any trained model, never sees the target datasets at training time, and is identical across all 5 compared models — so it cannot bias the comparison. Dict learning itself happens entirely in pixel space.
 
@@ -147,6 +151,8 @@ experiments/
 # detects which metrics are applicable from the dataset name and available files.
 ```
 
+<span style="color:red">**Added (diverges from the layout above):** the actual sweep entry point is `experiments/dict_learning_paper/sweep.py` (`dl-sweep`) — not `run_all.sh` / `ct-eval`. It declares the sparsity axis as a *list-valued TOML field*, writes one output subdir per run, and takes `--models` / `--batch-size` flags. Also added: `training/loops.py:train_vaee_shared_encoder` + `VAEESharedEncoderConfig`; the synthetic difficulty-tier configs `configs/sweep_synthetic_{easy,medium,hard}.toml`; and the plotting scripts `plot_curves.py` + `visualize_2d.py`.</span>
+
 **Reused existing code (do not duplicate):**
 - `src/lcblm/training/loops.py:train_vaee` and friends — extend pattern, do not rewrite
 - `src/lcblm/training/loops.py:RunResult` — add fields rather than introducing a new schema
@@ -176,29 +182,38 @@ Merge topic branches into `paper/dict-learning-v1` as they stabilize. Once the p
 
 Three tracks run in parallel; sync at end of each week. Track A is the experiment owner, Track B is the writing owner, Track C is the floating lead/infra/QA.
 
+**Status snapshot (2026-06-17, Track A).**
+- *Done & logged on runs:* reconstruction MSE, per-sample L0, alive-dict-size (all six `train_*` loops); feature-recovery → matched-fraction/cosine (synthetic); the `dl-sweep` driver + W&B; synthetic easy/medium/**hard** + **high-dim (D=32, K=64)** tiers; **within-concept-noise sweep** (σ=0.05/0.10/0.20); **dead-latent resampling**; **embedding-size sweeps** (E=4..128, both VAEE variants); VQ-VAE, β-VAE and the VAEE shared-encoder variant; the data loaders.
+- *Done — intervention (synthetic adaptation):* `eval/intervention.py` with metric 6 (ablation-direction consistency) + metric 7 (causal factor recovery + dominance), model-agnostic, unit-tested, with a checkpoint-reload driver. The ResNet-feature-space version (metric 6 proper) is still pending.
+- *Coded but not yet wired into any run (nothing logged):* `class_purity` (metric 4 — needs labelled MNIST/FMNIST runs); `mig` / `inverted_mig` (metric 5 — implemented + unit-tested, never called by the sweep, needs dSprites factor labels).
+- *Not started:* `resnet_eval.py`, `dsprites_factors.py`, `ct-eval`, `ct-cd` image rendering, the image-dataset sweeps, the cross-dataset Pareto figure.
+- *Current focus:* synthetic feature-recovery **now passes for the VAEE family** (resampling + larger E); high-dim is SAE home turf so VAEE wins MSE / VAEE-SE nears TopK on recovery only at large capacity. Next: `make_complex_synthetic` (per-concept subspaces) + multi-seed. Full numbers in `report.html` (v4).
+
 ### Track A — Experiments (1 person, full-time)
 
 **Week 1 — Baselines, data, core metrics**
-- Days 1-2: Implement `VQVAE` + `BetaVAE` as dict-learning layers + their `train_*` loops + configs (using existing VAEE/SAE training patterns as templates).
-- Days 3-4: Implement `src/lcblm/data/synthetic.py`, `src/lcblm/data/image_loaders.py`. Smoke-test all 4 datasets feed into all 5 models without error.
-- Days 4-5: Implement metrics 1-4 + feature-recovery sanity check in `src/lcblm/eval/metrics.py`. Extend `RunResult`.
-- Days 6-7: Implement Pareto-sweep driver. Kick off synthetic + MNIST sweeps.
+- Days 1-2: Implement `VQVAE` + `BetaVAE` as dict-learning layers + their `train_*` loops + configs (using existing VAEE/SAE training patterns as templates). — **Done.**
+- Days 3-4: Implement `src/lcblm/data/synthetic.py`, `src/lcblm/data/image_loaders.py`. Smoke-test all 4 datasets feed into all 5 models without error. — **Done** (synthetic generator + MNIST/FMNIST/dSprites loaders built; smoke-tested on synthetic).
+- Days 4-5: Implement metrics 1-4 + feature-recovery sanity check in `src/lcblm/eval/metrics.py`. Extend `RunResult`. — **Partial:** metrics 1–3 + feature-recovery wired & logged and `RunResult` extended; metric 4 (`class_purity`) coded but not yet wired.
+- Days 6-7: Implement Pareto-sweep driver. Kick off synthetic + MNIST sweeps. — **Done** for the `dl-sweep` driver + synthetic easy/medium sweeps; MNIST sweep not run.
 
 **Week 2 — All sweeps + intervention infra**
-- Days 1-3: Run all 4 dataset Pareto sweeps (60 runs, ~2 GPU-days). Background while implementing remaining metrics.
-- Days 3-5: Implement metric 5 (MIG) + metric 6 (intervention consistency in ResNet space) + metric 7 (dSprites factor recovery). Train the dSprites factor regressor.
-- Days 5-7: Compute all 7 metrics for all completed runs. Generate first-pass Pareto figures.
+- Days 1-3: Run all 4 dataset Pareto sweeps (60 runs, ~2 GPU-days). Background while implementing remaining metrics. — **Partial:** synthetic easy + medium sweeps done (all 6 models); MNIST / FMNIST / dSprites not run.
+- Days 3-5: Implement metric 5 (MIG) + metric 6 (intervention consistency in ResNet space) + metric 7 (dSprites factor recovery). Train the dSprites factor regressor. — **Partial:** MIG coded + unit-tested but not wired; metrics 6 & 7 built + unit-tested for the **synthetic** tier (`eval/intervention.py`), but the ResNet-space metric 6 and the dSprites regressor are not started.
+- Days 5-7: Compute all 7 metrics for all completed runs. Generate first-pass Pareto figures. — **Partial:** recon / L0 / alive-dict-size / feature-recovery computed on synthetic; 2D-analysis + learning-curve figures generated; the other metrics + the Pareto figure pending.
 
-**Week 3 — Figures + iteration**
+**Week 3 — Figures + iteration** — **Not started.**
 - Days 1-3: Generate per-dataset concept-dictionary HTMLs. Select figures for the paper.
 - Days 3-5: Re-run anything that looks broken; backfill missing metric computations.
 - Days 6-7: Hand off final tables + figures to Track B.
 
-**Week 4 — Buffer + reviewer-anticipated ablations**
+**Week 4 — Buffer + reviewer-anticipated ablations** — **Not started.**
 - Days 1-3: Camera-ready quality figures. One ablation (e.g., VAEE π-sweep on dSprites at finer granularity) if useful.
 - Days 4-7: Support Track B with figure tweaks, supplementary results, revisions.
 
 ### Track B — Writing (1 person, full-time)
+
+*Status: not started — no paper artifacts in this repo yet.*
 
 **Week 1**
 - Day 1: **Produce a detailed paper-structure plan before any drafting begins.** Section-by-section outline of the workshop paper: what each section claims/argues, how existing material from `probabilistic_formulation_v7.pdf` + `research_note.pdf` maps into it, what's missing and needs to be written from scratch, and where the 7 headline metrics and 4 datasets land. User approves the plan before tex work starts. No prose, no figure placeholders, no tex edits until this is approved.
@@ -218,6 +233,8 @@ Three tracks run in parallel; sync at end of each week. Track A is the experimen
 - Days 6-7: Submit.
 
 ### Track C — Floating lead / infra / QA (1 person, full-time or part-time)
+
+*Status: not started — metric-validation checks (incl. the MIG/β-VAE reproduction) still pending.*
 
 **Week 1**: Pair-program with Track A on whichever component is critical-path (probably the baseline implementations or the metric implementations). Code review.
 
