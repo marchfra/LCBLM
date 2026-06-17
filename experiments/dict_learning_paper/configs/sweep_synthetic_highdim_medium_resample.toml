@@ -1,0 +1,71 @@
+# High-dim medium tier + DEAD-LATENT RESAMPLING (resample_dead=true on VAEE).
+# Baseline (resample off) is sweep_synthetic_highdim_medium.toml.
+# D=32, K=64 (2x overcomplete), independent Bernoulli activation active_prob=0.047
+# (E[k]=3), binary coefficients {0,+1}, small additive noise.
+# No adjacent_only (that is a 2D-ring construct; high-dim random atoms don't fold).
+# 3-point sparsity Pareto per model.
+
+wandb_project = "dict-learning-paper"
+dataset = "synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+recovery_threshold = 0.7   # dimension-aware: 0.9 too strict in 32-D (random pairs ~0.18)
+
+epochs = 1000
+lr = 1e-4
+batch_size = 1024
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 64
+input_dim = 32
+noise_std = 0.05
+binary_coefs = true
+active_prob = 0.047   # E[k] = 64 * 0.047 ≈ 3
+
+# Sparsity Pareto: pi swept ≈ k/K for k ∈ {2,3,5}.
+[vaee]
+num_embeddings = 64
+beta = 0.3
+pi = [0.03, 0.047, 0.08]
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = 4
+
+[vaee_shared_encoder]
+num_embeddings = 64
+beta = 0.3
+pi = [0.03, 0.047, 0.08]
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = 4
+
+[topk_sae]
+latent_dim = 64
+k_aux = 64
+k = [2, 3, 5]
+
+[sae_concept]
+vaee_num_embeddings = 64
+lambda_l1 = [0.05, 0.1, 0.3]
+
+[vq_vae]
+embedding_dim = 8
+num_codes = [64, 128]
+
+[beta_vae]
+latent_dim = 64
+kl_warmup_epochs = 50
+beta = [0.001, 0.01, 0.1]

@@ -38,8 +38,23 @@ class VAEEConfig(_BaseConfig):
     gamma: float = 1.0
     beta: float = 4.0
     lambda_ent: float = 1.0
+    lambda_ent_warmup_epochs: int = 0
     lambda_ortho: float = 0.0
     l0_threshold: float = 0.5
+    # ── Dead-concept resampling (anti-death; default off preserves baseline) ──
+    # When enabled, every ``resample_every`` epochs any concept firing on fewer
+    # than ``resample_dead_frac`` of samples is reinitialised toward an
+    # under-reconstructed (residual) data direction: its encoder rows, prototype,
+    # and decoder block are reseeded as a consistent triple and the corresponding
+    # Adam moments are reset. Resampling stops after ``resample_stop_frac`` of the
+    # epoch budget so revived concepts can settle before model selection / eval.
+    # Only supported for ``encoder_type in {"linear", "shallow"}`` (the per-concept
+    # row partition the reinit needs); a no-op + warning otherwise.
+    resample_dead: bool = False
+    resample_every: int = 50
+    resample_dead_frac: float = 0.001
+    resample_stop_frac: float = 0.8
+    resample_max_per_step: int = 0  # 0 → no cap
 
     def __post_init__(self) -> None:
         minimum_l0 = 2.0
@@ -73,6 +88,7 @@ class VAEESharedEncoderConfig(_BaseConfig):
     topology: Literal["stacked", "summed"] = "stacked"
     beta: float = 4.0
     lambda_ent: float = 1.0
+    lambda_ent_warmup_epochs: int = 0
     lambda_ortho: float = 0.0
     l0_threshold: float = 0.5
     gate_mean_only: bool = False

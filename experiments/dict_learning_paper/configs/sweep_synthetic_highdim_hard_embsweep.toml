@@ -1,0 +1,43 @@
+# High-dim hard, embedding-size (E) sweep for the VAEE family.
+# Tests whether a larger per-concept subspace helps reconstruction / recovery.
+# Reference point E=4 already exists in sweep_synthetic_highdim_hard_noise005
+# (pi=0.047 -> matched 0.531); here pi is FIXED at 0.047 and E is the sweep axis.
+# Same data + resampling as noise005 (sigma=0.05, continuous coefs). Only the
+# standard VAEE is included (VAEE-SE is broken in high-dim regardless of E;
+# TopK / L1 have no embedding_size and are unchanged).
+#
+# Capacity note: effective VAEE capacity is #active x E, so E=32 at #active~5 is
+# ~160 vs TopK's k=5 — report #active AND E x #active when comparing MSE.
+
+wandb_project = "dict-learning-paper"
+dataset = "synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+recovery_threshold = 0.7
+
+epochs = 1000
+lr = 1e-4
+batch_size = 1024
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 64
+input_dim = 32
+noise_std = 0.05
+binary_coefs = true
+active_prob = 0.047
+coef_range = [0.5, 1.5]
+
+[vaee]
+num_embeddings = 64
+beta = 0.3
+pi = 0.047
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = [8, 16, 32]

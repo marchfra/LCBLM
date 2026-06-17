@@ -1,0 +1,53 @@
+# High-dim hard, embedding-size (E) sweep EXTENSION for VAEE + VAEE-SE: E=64,128.
+# Continues sweep_synthetic_highdim_hard_embsweep{,_se}.toml (E=4,8,16,32) to find
+# where recovery / MSE saturate for both variants. Same data + resampling
+# (sigma=0.05, continuous coefs), pi FIXED at 0.047. Capacity at E=128 is
+# ~#active x 128 (~520) — far past any defensible operating point; this is a
+# saturation probe, not a recipe.
+
+wandb_project = "dict-learning-paper"
+dataset = "synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+recovery_threshold = 0.7
+
+epochs = 1000
+lr = 1e-4
+batch_size = 1024
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 64
+input_dim = 32
+noise_std = 0.05
+binary_coefs = true
+active_prob = 0.047
+coef_range = [0.5, 1.5]
+
+[vaee]
+num_embeddings = 64
+beta = 0.3
+pi = 0.047
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = [64, 128]
+
+[vaee_shared_encoder]
+num_embeddings = 64
+beta = 0.3
+pi = 0.047
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = [64, 128]
