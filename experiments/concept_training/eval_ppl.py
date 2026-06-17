@@ -33,8 +33,6 @@ from lcblm.utils.seed import set_seeds
 if TYPE_CHECKING:
     from sklearn.preprocessing import StandardScaler
 
-    from experiments.concept_training.model_adapter import ModelAdapter
-
 BACKBONE_ID = "mistralai/Mistral-7B-v0.1"
 
 
@@ -42,17 +40,17 @@ BACKBONE_ID = "mistralai/Mistral-7B-v0.1"
 
 
 class ScaledReconHead(nn.Module):
-    """Backbone embeddings → scaler → adapter encode+decode → inv-scaler → lm_head."""
+    """Backbone embeddings → scaler → model(x).recon → inv-scaler → lm_head."""
 
     def __init__(
         self,
-        adapter: ModelAdapter,
+        model: nn.Module,
         lm_head: nn.Module,
         scaler: StandardScaler,
         device: torch.device,
     ) -> None:
         super().__init__()
-        self.adapter = adapter
+        self.model = model
         self.lm_head = lm_head
         self.scaler = scaler
         self.device = device
@@ -64,7 +62,7 @@ class ScaledReconHead(nn.Module):
             self.device,
         )
         with torch.inference_mode():
-            recon = self.adapter.decode(self.adapter.encode(norm))
+            recon = self.model(norm).recon
         inv = torch.from_numpy(
             self.scaler.inverse_transform(recon.float().cpu().numpy()).astype(
                 "float32",
@@ -380,9 +378,9 @@ def main() -> None:
             continue
 
         print(f"\n[{run_dir.name}] loading adapter from {ckpt_path.name} …")
-        adapter: ModelAdapter = load_adapter(ckpt_path).to(device)  # type: ignore[union-attr]
+        adapter = load_adapter(ckpt_path).to(device)  # type: ignore[union-attr]
         scaler = load_scaler(run_dir / "scaler.pkl")
-        head = ScaledReconHead(adapter, lm_head, scaler, device)
+        head = ScaledReconHead(adapter._model, lm_head, scaler, device)  # type: ignore[union-attr]  # noqa: SLF001
 
         out_file = _generate_and_save(
             label=run_dir.name,
