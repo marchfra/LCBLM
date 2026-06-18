@@ -1,0 +1,98 @@
+# Dict-learning — COMPLEX synthetic (medium) dataset: per-concept subspaces
+# 2D, 5 atoms on unit circle (analytically spaced), independent Bernoulli
+# activation (active_prob=0.5) with the adjacent-only constraint, binary
+# coefficients {0,+1}, noise_std=0.05.
+#
+# Variable per-sample support: ~50% singletons (k=1) + ~50% ring-adjacent pairs
+# (k=2). Skip-one (non-adjacent) co-activations are forbidden, so there are no
+# near-origin fold-back clusters; singletons pin each atom unambiguously.
+#
+# Identical recipe to the high tier — the ONLY difference is the noise level
+# (medium noise_std=0.05, high noise_std=0.15).
+#
+# Usage:
+#   dl-sweep --config experiments/dict_learning_paper/configs/sweep_synthetic_medium.toml
+
+wandb_project = "dict-learning-paper"
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset = "complex_synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs = 1000
+lr = 1e-4
+batch_size = 256
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 5
+input_dim = 2
+noise_std = 0.05
+binary_coefs = true
+subspace_rank = 1
+subspace_scale = 0.3
+active_prob = 0.5
+adjacent_only = true
+min_separation = 0.628318  # π/5 radians for uniform 5-atom spacing
+
+# ── VAEE ──────────────────────────────────────────────────────────────────────
+# Winning recipe (beta=1, lambda_ortho=2, lambda_ent=0, gumbel_temp=0.5,
+# sim_metric=inner_product). pi=0.3 = marginal per-atom activation
+# (E[k]=1.5 over 5 atoms) — correctly-specified gate prior. Sweep
+# embedding_size=[2,4] to test whether the per-sample encoder (mu_i(x)) helps.
+[vaee]
+num_embeddings = 5
+beta = 1.0
+pi = 0.3
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+embedding_size = [2, 4]
+
+# ── VAEE (shared encoder) ─────────────────────────────────────────────────────
+# Same recipe as VAEE; sweep embedding_size=[2,4] in parallel.
+[vaee_shared_encoder]
+num_embeddings = 5
+beta = 1.0
+pi = 0.3
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+embedding_size = [2, 4]
+
+# ── TopK-SAE ──────────────────────────────────────────────────────────────────
+# Fixed k cannot match the variable support: k=1 captures the ~50% singletons
+# but misses adjacent pairs; k=2 over-fires on singletons. Sweep both to show
+# the gap.
+[topk_sae]
+latent_dim = 5
+k_aux = 5
+k = [1, 2]
+
+# ── L1-SAE ────────────────────────────────────────────────────────────────────
+# Soft threshold adapts per sample; two points bracket the useful range.
+[sae_concept]
+vaee_num_embeddings = 5
+lambda_l1 = [0.1, 0.3]
+
+# ── VQ-VAE ────────────────────────────────────────────────────────────────────
+# num_codes=5 (= n_atoms, fair comparison) and num_codes=10 (= the 10 valid
+# modes: 5 singletons + 5 adjacent pairs). A single code per sample cannot
+# represent superposition without memorising modes.
+[vq_vae]
+embedding_dim = 4
+num_codes = [5, 10]
+
+# ── β-VAE ─────────────────────────────────────────────────────────────────────
+# latent_dim=5 matches n_features. KL warmup avoids posterior collapse on this
+# low-dim noisy data. Sweep beta=[0.5, 1.0].
+[beta_vae]
+latent_dim = 5
+kl_warmup_epochs = 50
+beta = [0.5, 1.0]

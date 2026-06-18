@@ -37,7 +37,7 @@ from torch import nn
 
 import wandb
 from lcblm.data.image_loaders import load_dsprites, load_fmnist, load_mnist
-from lcblm.data.synthetic import make_synthetic
+from lcblm.data.synthetic import make_complex_synthetic, make_synthetic
 from lcblm.eval.metrics import feature_recovery
 from lcblm.training.configs import MODEL_CONFIG_CLASSES, VAEEConfig, _BaseConfig
 from lcblm.training.loops import (
@@ -99,8 +99,9 @@ def _load_dataset(
     gt_features is the [n_features, input_dim] ground-truth atom matrix for
     synthetic datasets; None for all other datasets.
     """
-    if dataset == "synthetic":
-        full, features = make_synthetic(**(synthetic_cfg or {}))
+    if dataset in ("synthetic", "complex_synthetic"):
+        gen = make_synthetic if dataset == "synthetic" else make_complex_synthetic
+        full, features = gen(**(synthetic_cfg or {}))
         n = len(full)
         cut = int(0.8 * n)
         return (

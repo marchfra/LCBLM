@@ -1,0 +1,84 @@
+# Dict-learning — COMPLEX synthetic (easy) dataset: per-concept subspaces
+# 2D, 8 atoms on unit circle, k=1 active per sample, binary coefficients {0,+1}.
+# Distinct cluster modes: 8 (= n_features × {+1}). Pure single-atom recovery —
+# the baseline tier where every model should succeed.
+# Hyperparameters exactly match ground truth (no overcompleteness).
+#
+# VAEE/VAEE-SE now use the winning recipe (lambda_ent=0, sim_metric=inner_product,
+# gumbel_temp, emb=[2,4]). The previous easy config still carried lambda_ent=0.1 —
+# the diagnosed recovery-killer — which is why standard VAEE stalled at 0.375.
+#
+# Usage:
+#   dl-sweep --config experiments/dict_learning_paper/configs/sweep_synthetic_easy.toml
+
+wandb_project = "dict-learning-paper"
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+dataset = "complex_synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+
+# ── Shared training settings ──────────────────────────────────────────────────
+epochs = 1000
+lr = 1e-4
+batch_size = 256
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 8
+n_active = 1
+input_dim = 2
+noise_std = 0.05
+binary_coefs = true
+subspace_rank = 1
+subspace_scale = 0.3
+
+# ── VAEE ──────────────────────────────────────────────────────────────────────
+# Winning recipe. num_embeddings=8; pi = n_active/num_embeddings = 1/8.
+[vaee]
+num_embeddings = 8
+beta = 4.0
+pi = 0.125
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 1.0
+sim_metric = "inner_product"
+embedding_size = [2, 4]
+
+# ── VAEE (shared encoder) ─────────────────────────────────────────────────────
+[vaee_shared_encoder]
+num_embeddings = 8
+beta = 4.0
+pi = 0.125
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 1.0
+sim_metric = "inner_product"
+embedding_size = [2, 4]
+
+# ── TopK-SAE ──────────────────────────────────────────────────────────────────
+# k_aux <= latent_dim is required; k_aux = latent_dim is the safe choice here.
+[topk_sae]
+latent_dim = 8
+k_aux = 8
+k = [1]
+
+# ── L1-SAE ────────────────────────────────────────────────────────────────────
+# lambda=1.0 gave L0≈3.8, lambda=5.0 blew MSE; 2.0–3.0 brackets the useful range.
+[sae_concept]
+vaee_num_embeddings = 8
+lambda_l1 = [2.0, 3.0]
+
+# ── VQ-VAE ────────────────────────────────────────────────────────────────────
+# num_codes = n_atoms = 8 (fair dictionary size; one code per single-atom mode).
+[vq_vae]
+embedding_dim = 4
+num_codes = [8]
+
+# ── β-VAE ─────────────────────────────────────────────────────────────────────
+[beta_vae]
+latent_dim = 8
+kl_warmup_epochs = 50
+beta = [0.5, 1.0]
