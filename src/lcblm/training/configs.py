@@ -122,7 +122,7 @@ class TopKSAEConfig(_BaseConfig):
 
 @dataclass(frozen=True, kw_only=True)
 class SAEConceptConfig(_BaseConfig):
-    vaee_num_embeddings: int
+    latent_dim: int  # dictionary size, set directly (not VAEE-derived)
     lambda_l1: float
     normalize_decoder: bool = True
 

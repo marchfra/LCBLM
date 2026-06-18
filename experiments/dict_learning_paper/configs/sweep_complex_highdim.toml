@@ -1,0 +1,73 @@
+# COMPLEX synthetic, HIGH-DIM tier — the real MSE test.
+# D=32, K=64 atoms, each an anchor + rank-4 subspace orthogonal to the anchor
+# (subspace_scale=0.3). active_prob=0.047 => ~3.15 active concepts per sample.
+# Here k << input_dim, so no model can trivially span the space / copy the input:
+# MSE is a real measure (unlike 2D).
+#
+# Test: VAEE captures each concept's 4-D subspace inside one E=64 concept, so it
+# reaches low MSE at ~3 active concepts. SAEs are held at matched sparsity (TopK
+# k=4 ~= #active concepts; L1 sparser via higher lambda), so a 1-D latent cannot
+# cover a concept's subspace. The SAE budget is the sweep axis (latent_dim 64 vs
+# 320 = K vs K*(r+1)) to see whether more latents lower MSE but reduce recovery
+# (the degenerate, fit-via-many-latents direction).
+
+wandb_project = "dict-learning-paper"
+dataset = "complex_synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+recovery_threshold = 0.7
+
+epochs = 1000
+lr = 1e-4
+batch_size = 1024
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 64
+input_dim = 32
+noise_std = 0.05
+binary_coefs = true
+active_prob = 0.047
+subspace_rank = 4
+subspace_scale = 0.3
+
+[vaee]
+num_embeddings = 64
+beta = 0.3
+pi = 0.047
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = 64
+
+[vaee_shared_encoder]
+num_embeddings = 64
+beta = 0.3
+pi = 0.047
+lambda_ortho = 2.0
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 0.5
+sim_metric = "inner_product"
+resample_dead = true
+resample_every = 50
+resample_stop_frac = 0.8
+embedding_size = 64
+
+# Two budgets (sweep axis): latent_dim = K (64) and K*(r+1) (320), sparsity k=4
+# fixed (~ #active concepts).
+[topk_sae]
+k = 4
+k_aux = 32
+latent_dim = [64, 320]
+
+# L1 budget axis (dictionary size set directly); lambda raised to 0.5 to push
+# sparsity toward the concept count.
+[sae_concept]
+lambda_l1 = 0.5
+latent_dim = [64, 320]

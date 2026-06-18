@@ -1,0 +1,35 @@
+# COMPLEX easy, standard VAEE only — lambda_ortho bump to test 2D anchor coverage.
+# E=4 fixed (the better one); lambda_ortho swept 4.0/8.0 (vs the 2.0 baseline that
+# gave bunched arrows / matched 0.25). NOTE: in 2D the orthogonality term acts in
+# embedding space and is geometrically capped, so the effect may be small — the
+# real coverage fix is an input-space repulsion on the decoded anchor directions.
+
+wandb_project = "dict-learning-paper"
+dataset = "complex_synthetic"
+output_dir = "experiments/dict_learning_paper/outputs"
+
+epochs = 1000
+lr = 1e-4
+batch_size = 256
+early_stopping_patience = 300
+
+[synthetic]
+n_samples = 20000
+n_features = 8
+n_active = 1
+input_dim = 2
+noise_std = 0.05
+binary_coefs = true
+subspace_rank = 1
+subspace_scale = 0.3
+
+[vaee]
+num_embeddings = 8
+beta = 4.0
+pi = 0.125
+lambda_ortho = [4.0, 8.0]
+lambda_ent = 0.0
+lambda_ent_warmup_epochs = 0
+gumbel_temp = 1.0
+sim_metric = "inner_product"
+embedding_size = 4

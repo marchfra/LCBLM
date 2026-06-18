@@ -80,7 +80,7 @@ k = [1, 2]
 # ── L1-SAE ────────────────────────────────────────────────────────────────────
 # Soft threshold adapts per sample; two points bracket the useful range.
 [sae_concept]
-vaee_num_embeddings = 5
+latent_dim = 5
 lambda_l1 = [0.1, 0.3]
 
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────

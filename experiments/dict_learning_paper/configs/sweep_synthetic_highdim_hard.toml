@@ -55,7 +55,7 @@ k_aux = 64
 k = [2, 3, 5]
 
 [sae_concept]
-vaee_num_embeddings = 64
+latent_dim = 64
 lambda_l1 = [0.05, 0.1, 0.3]
 
 [vq_vae]

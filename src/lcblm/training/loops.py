@@ -917,7 +917,7 @@ def train_sae_concept(
 ) -> tuple[SparseAE, RunResult]:
     return _train_l1_sae(
         "sae_concept",
-        cfg.vaee_num_embeddings,
+        cfg.latent_dim,
         train_ds,
         val_ds,
         cfg,

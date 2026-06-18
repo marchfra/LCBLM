@@ -68,7 +68,7 @@ k = [1]
 # ── L1-SAE ────────────────────────────────────────────────────────────────────
 # lambda=1.0 gave L0≈3.8, lambda=5.0 blew MSE; 2.0–3.0 brackets the useful range.
 [sae_concept]
-vaee_num_embeddings = 8
+latent_dim = 8
 lambda_l1 = [2.0, 3.0]
 
 # ── VQ-VAE ────────────────────────────────────────────────────────────────────
