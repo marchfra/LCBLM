@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from typing import Literal, NamedTuple
 
 import torch
@@ -238,12 +239,12 @@ VariationalAutoEmbeddingEncoder = VAEE
 class VAEESharedEncoder(nn.Module):
     """VAEE variant with a shared encoder projection used only for gating.
 
-    A single linear projection e = W(x) ∈ ℝ^d computes gating probabilities
+    A single linear projection e = W(x) ∈ R^d computes gating probabilities
     α_k = sigmoid(sim(e, h_k) / τ) for each concept. The decoder receives
     z_k = c_k · h_k (gated prototypes) rather than per-concept encoder means.
     At eval, the soft gate z_k = α_k · h_k preserves per-sample variation.
     The conditional-embedding KL (γ term) is absent — there is no μ to regularize.
-    """
+    """  # noqa: RUF002
 
     class Output(NamedTuple):
         recon: Tensor
@@ -263,6 +264,7 @@ class VAEESharedEncoder(nn.Module):
         encoder_type: Literal["mlp", "linear", "shallow"] = "shallow",
         hidden_dim: int = 256,
         output_activation: nn.Module | None = None,
+        *,
         gate_mean_only: bool = False,
     ) -> None:
         if num_embeddings <= 0:
@@ -340,13 +342,15 @@ class VAEESharedEncoder(nn.Module):
         return next(self.parameters()).device
 
     def _compute_logits(self, e: Tensor) -> Tensor:
-        """Compute per-concept logits from the shared projection e ∈ ℝ^(B,d)."""
+        """Compute per-concept logits from the shared projection e ∈ R^(B,d)."""
         scale = torch.clamp(self._logit_scale.exp(), min=1.0, max=100.0)
         match self.sim_metric:
             case "cosine":
                 # (B, 1, d) vs (1, K, d) → (B, K)
                 sim = cosine_similarity(
-                    e.unsqueeze(1), self.prototypes.unsqueeze(0), dim=-1
+                    e.unsqueeze(1),
+                    self.prototypes.unsqueeze(0),
+                    dim=-1,
                 )
                 return sim * scale
             case "inner_product":
@@ -380,17 +384,16 @@ class VAEESharedEncoder(nn.Module):
         return z, c
 
     def decode(self, z: Tensor) -> Tensor:
-        if self.topology == "summed":
-            z_in = z.sum(dim=1)
-        else:
-            z_in = z.flatten(start_dim=1)
+        z_in = z.sum(dim=1) if self.topology == "summed" else z.flatten(start_dim=1)
         return self._decoder(z_in)
 
     def decoder_first_weight(self) -> Tensor:
         first = self._decoder[0]
         if isinstance(first, MLP):
             return first.linear1.weight
-        assert isinstance(first, nn.Linear)
+        if not isinstance(first, nn.Linear):
+            msg = "decoder[0] should be nn.Linear"
+            raise TypeError(msg)
         return first.weight  # type: ignore[return-value]
 
     def forward(self, x: Tensor) -> Output:
@@ -572,6 +575,8 @@ def compute_loss(  # noqa: PLR0913
     cond_kl = alpha_sg * mu_dist + (1 - alpha_sg) * mu_norm
     cond_kl_loss = gamma * cond_kl.mean()  # mean over batch and K
 
+    # Clamp pi to (0, 1) to avoid division by 0
+    pi = max(sys.float_info.epsilon, min(pi, 1 - sys.float_info.epsilon))
     mean_alpha = alpha.mean(dim=0)
     mean_alpha = clamp_0_1(mean_alpha)
     term_1 = mean_alpha * torch.log((mean_alpha) / pi)
